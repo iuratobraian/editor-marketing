@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@import "tailwindcss";
+
+:root {
+  --vp-bg: #090B10;
+  --vp-panel: #11151E;
+  --vp-panel-sec: #161B25;
+  --vp-border: #232A36;
+  --vp-primary: #7B5CFF;
+  --vp-secondary: #00C8FF;
+  --vp-success: #00D97E;
+  --vp-warning: #FFB547;
+  --vp-error: #FF4D6D;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--vp-bg);
+  color: #f3f4f6;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* Premium Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--vp-border);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-primary);
+}
+
+/* Node Graph Background Pattern */
+.node-grid-bg {
+  background-color: var(--vp-bg);
+  background-image: radial-gradient(rgba(123, 92, 255, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Animations for Kinetic Texts */
+@keyframes vp-neon-pulse {
+  0%, 100% { text-shadow: 0 0 8px var(--vp-primary), 0 0 15px var(--vp-primary); }
+  50% { text-shadow: 0 0 15px var(--vp-primary), 0 0 30px var(--vp-primary), 0 0 45px var(--vp-primary); }
+}
+
+@keyframes vp-glitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
+
+@keyframes vp-typing {
+  from { width: 0 }
+  to { width: 100% }
+}
+
+@keyframes vp-fade-zoom {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes vp-bounce-in {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-vp-neon {
+  animation: vp-neon-pulse 2s infinite alternate;
+}
+
+.animate-vp-glitch {
+  animation: vp-glitch 0.4s infinite;
+}
+
+.animate-vp-fade-zoom {
+  animation: vp-fade-zoom 0.5s ease-out forwards;
+}
+
+.animate-vp-bounce {
+  animation: vp-bounce-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}

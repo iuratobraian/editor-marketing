@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Opcional: Ocultar scrollbars para que el editor se vea más limpio */
+body {
+  margin: 0;
+  background-color: #111827; /* Fondo oscuro base */
+}
