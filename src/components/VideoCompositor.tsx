@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 
 // Local proxy resolver to bypass COEP/CORS blocks on localhost
-const getSafeUrl = (url: string): string => {
-  if (url && url.startsWith('https://assets.mixkit.co/')) {
+const getSafeUrl = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  if (url.startsWith('https://assets.mixkit.co/')) {
     return url.replace('https://assets.mixkit.co/', '/proxy-mixkit/');
   }
   return url;
@@ -18,17 +19,17 @@ const getSafeUrl = (url: string): string => {
 
 // Stock media presets
 const PRESET_VIDEOS = [
-  { name: 'Crypto Charts Loop', url: '/proxy-mixkit/videos/preview/mixkit-financial-charts-on-a-computer-monitor-43187-large.mp4', type: 'video' },
-  { name: 'Office Work Charts', url: '/proxy-mixkit/videos/preview/mixkit-business-charts-on-a-computer-screen-40742-large.mp4', type: 'video' },
-  { name: 'Abstract Cyber Lines', url: '/proxy-mixkit/videos/preview/mixkit-abstract-glowing-digital-lines-background-loop-42289-large.mp4', type: 'video' },
-  { name: 'Bitcoin Concept', url: '/proxy-mixkit/videos/preview/mixkit-bitcoin-crypto-currency-concept-42231-large.mp4', type: 'video' },
-  { name: 'Confetti Overlay', url: '/proxy-mixkit/videos/preview/mixkit-confetti-falling-on-a-black-background-34271-large.mp4', type: 'video' },
-  { name: 'Light Leaks Loop', url: '/proxy-mixkit/videos/preview/mixkit-light-leaks-leak-leak-loop-42211-large.mp4', type: 'video' },
-  { name: 'Analog Glitch', url: '/proxy-mixkit/videos/preview/mixkit-analog-glitch-screen-effect-43063-large.mp4', type: 'video' },
-  { name: 'Sparks and Flames', url: '/proxy-mixkit/videos/preview/mixkit-sparks-and-flames-of-a-bonfire-43058-large.mp4', type: 'video' },
-  { name: 'Floating Hearts', url: '/proxy-mixkit/videos/preview/mixkit-social-media-like-hearts-floating-42250-large.mp4', type: 'video' },
-  { name: 'Particle Wave', url: '/proxy-mixkit/videos/preview/mixkit-abstract-digital-particle-wave-background-42284-large.mp4', type: 'video' },
-  { name: 'Magical Fireflies', url: '/proxy-mixkit/videos/preview/mixkit-magical-fireflies-in-a-dark-forest-43029-large.mp4', type: 'video' }
+  { name: 'Crypto Charts Loop', url: '/proxy-mixkit/videos/43187/43187-720.mp4', type: 'video' },
+  { name: 'Office Work Charts', url: '/proxy-mixkit/videos/40742/40742-720.mp4', type: 'video' },
+  { name: 'Abstract Cyber Lines', url: '/proxy-mixkit/videos/42289/42289-720.mp4', type: 'video' },
+  { name: 'Bitcoin Concept', url: '/proxy-mixkit/videos/42231/42231-720.mp4', type: 'video' },
+  { name: 'Confetti Overlay', url: '/proxy-mixkit/videos/34271/34271-720.mp4', type: 'video' },
+  { name: 'Light Leaks Loop', url: '/proxy-mixkit/videos/42211/42211-720.mp4', type: 'video' },
+  { name: 'Analog Glitch', url: '/proxy-mixkit/videos/43063/43063-720.mp4', type: 'video' },
+  { name: 'Sparks and Flames', url: '/proxy-mixkit/videos/43058/43058-720.mp4', type: 'video' },
+  { name: 'Floating Hearts', url: '/proxy-mixkit/videos/42250/42250-720.mp4', type: 'video' },
+  { name: 'Particle Wave', url: '/proxy-mixkit/videos/42284/42284-720.mp4', type: 'video' },
+  { name: 'Magical Fireflies', url: '/proxy-mixkit/videos/43029/43029-720.mp4', type: 'video' }
 ];
 
 const PRESET_IMAGES = [
@@ -2398,6 +2399,10 @@ export default function VideoCompositor() {
                   >
                     {clip.type === 'video' ? (
                       <video src={clip.url} className="w-full h-full object-cover opacity-60 pointer-events-none" />
+                    ) : clip.type === 'text' ? (
+                      <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-white font-bold text-[9px] p-2 text-center pointer-events-none select-none overflow-hidden">
+                        <span className="line-clamp-2">{clip.textContent || 'Texto'}</span>
+                      </div>
                     ) : (
                       <img src={clip.url} alt="clip preview" className="w-full h-full object-cover opacity-60 pointer-events-none" />
                     )}
@@ -2821,10 +2826,23 @@ export default function VideoCompositor() {
                             zIndex: 10,
                           };
 
-                          return (
+                           return (
                             <div style={style} className="w-full h-full">
                               {clip.type === 'video' ? (
                                 <video src={getSafeUrl(clip.url)} className="w-full h-full object-cover" muted />
+                              ) : clip.type === 'text' ? (
+                                <div 
+                                  className="w-full h-full flex items-center justify-center p-4 text-center font-bold break-words select-none leading-normal"
+                                  style={{
+                                    color: clip.textColor || '#ffffff',
+                                    fontSize: `${(clip.textFontSize || 40) * containerScale}px`,
+                                    fontFamily: clip.textFontFamily || 'Montserrat',
+                                    textShadow: clip.textEffect === 'shadow' ? '3px 3px 6px rgba(0,0,0,0.8)' : undefined,
+                                    whiteSpace: 'pre-wrap'
+                                  }}
+                                >
+                                  {clip.textContent || 'Texto'}
+                                </div>
                               ) : (
                                 <img src={getSafeUrl(clip.url)} alt="preview" className="w-full h-full object-cover" />
                               )}

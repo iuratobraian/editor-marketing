@@ -15,7 +15,14 @@ export default defineConfig({
       '/proxy-mixkit': {
         target: 'https://assets.mixkit.co',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/proxy-mixkit/, ''),
+        rewrite: (path) => {
+          const cleanPath = path.replace(/^\/proxy-mixkit/, '');
+          const match = cleanPath.match(/^\/videos\/preview\/mixkit-[a-zA-Z0-9-]*?-(\d+)-large\.mp4$/);
+          if (match) {
+            return `/videos/${match[1]}/${match[1]}-720.mp4`;
+          }
+          return cleanPath;
+        },
         configure: (proxy, _options) => {
           proxy.on('proxyRes', (proxyRes) => {
             proxyRes.headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
