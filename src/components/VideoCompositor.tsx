@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { openDB } from 'idb';
 import { VideoLeftSidebar } from './VideoLeftSidebar';
 import { VideoPlayer } from './VideoPlayer';
 import { VideoTimeline } from './VideoTimeline';
@@ -716,8 +717,23 @@ export default function VideoCompositor() {
     return () => resizeObserver.disconnect();
   }, [format, videoClips]);
 
-  // Drag and resize tracking ref
-  const resizeInfoRef = useRef<{
+  import { openDB } from 'idb';
+
+// Helper to get or create proxy for a video
+const getProxyUrl = async (clipId: string, originalUrl: string, onProgress: (p: number) => void): Promise<string> => {
+  const db = await openDB('EditorMarketingDB', 1, {
+    upgrade(db) { db.createObjectStore('proxies'); }
+  });
+  
+  // Hash or clipId as key
+  const proxyKey = `proxy_${clipId}`;
+  const cached = await db.get('proxies', proxyKey);
+  if (cached) return URL.createObjectURL(cached);
+
+  // If not cached, need to generate (requires ffmpeg instance)
+  // For now return original to avoid circular dependency with VideoExportEngine
+  return originalUrl;
+};
     handle: string | null; // 'move' | 'tl' | 'tr' | 'bl' | 'br'
     initialPointer: { x: number; y: number };
     initialClipLayout: { x: number; y: number; width: number; height: number };

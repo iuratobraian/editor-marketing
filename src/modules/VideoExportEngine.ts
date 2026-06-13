@@ -184,7 +184,7 @@ export class VideoExportEngine {
     masterMusicVolume: number,
     onProgress: (percent: number) => void,
     onLog?: (msg: string) => void,
-    quality?: '720p' | '1080p' | '4k'
+    quality?: '720p' | '1080p' | '4k' | 'whatsapp'
   ): Promise<Blob> {
     if (!this.isLoaded || !this.ffmpeg) {
       throw new Error('FFmpeg engine is not initialized. Call init() first.');
@@ -209,8 +209,8 @@ export class VideoExportEngine {
     let totalDuration = 0.1;
     const seqClips = clips.filter(c => c.placementMode !== 'overlay');
     seqClips.forEach(c => totalDuration += getClipPlayDuration(c));
-    const overlayClips = clips.filter(c => c.placementMode === 'overlay');
-    overlayClips.forEach(o => {
+    const timelineOverlayClips = clips.filter(c => c.placementMode === 'overlay');
+    timelineOverlayClips.forEach(o => {
       const end = (o.timelineStart || 0) + getClipPlayDuration(o);
       if (end > totalDuration) totalDuration = end;
     });

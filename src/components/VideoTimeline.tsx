@@ -19,6 +19,8 @@ interface VideoTimelineProps {
   handleTimelineResize: (e: React.PointerEvent<any>, clipId: string, direction: 'left' | 'right', trackType: 'video' | 'audio') => void;
   nodesList: any[];
   nodeConnections: any[];
+  timelineZoom: number;
+  setTimelineZoom: (zoom: number) => void;
 }
 
 export const VideoTimeline: React.FC<VideoTimelineProps> = ({
@@ -37,6 +39,8 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
   handleTimelineResize,
   nodesList,
   nodeConnections,
+  timelineZoom,
+  setTimelineZoom,
 }) => {
   if (false as boolean) {
     console.log(nodesList, nodeConnections);

@@ -117,6 +117,7 @@ export interface VideoClip {
   id: string;
   type: VideoClipType;
   url: string;
+  proxyUrl?: string; // New field
   name: string;
   duration: number; // total duration of clip in seconds
   startTrim: number; // offset start time in seconds
