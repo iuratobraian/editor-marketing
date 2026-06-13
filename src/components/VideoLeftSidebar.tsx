@@ -651,25 +651,36 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
               </button>
               {youtubeError && (
                 <div className="space-y-1 mt-1.5 p-2 bg-red-950/20 border border-red-500/20 rounded-lg">
-                  <p className="text-[8px] text-red-400 font-black leading-tight">❌ Error de descarga</p>
+                  <p className="text-[8px] text-red-400 font-black leading-tight">❌ Error de descarga / Cookies</p>
                   <p className="text-[7.5px] text-red-400/90 leading-tight">{youtubeError}</p>
-                  <p className="text-[7.5px] text-gray-400 leading-normal pt-1 border-t border-white/5">
-                    💡 <strong>Solución rápida y definitiva:</strong>
-                    <br />
-                    1. Instala la extensión de Chrome/Firefox <strong>"Get cookies.txt LOCALLY"</strong>.
-                    <br />
-                    2. Entra a YouTube en tu navegador.
-                    <br />
-                    3. Haz clic en la extensión y descarga el archivo <strong>cookies.txt</strong>.
-                    <br />
-                    4. Guárdalo en la carpeta del editor (raíz del proyecto) y vuelve a intentar.
-                  </p>
+                  <div className="text-[7.5px] text-gray-400 leading-normal pt-1 border-t border-white/5 space-y-1">
+                    <p>💡 <strong>¿Por qué pide cookies?</strong> YouTube bloquea robots para evitar sobrecarga. Usar tus cookies le dice a YouTube que eres una persona real.</p>
+                    <p><strong>Para solucionar en otra PC:</strong></p>
+                    <p>1. Instala la extensión <strong>"Get cookies.txt LOCALLY"</strong>.</p>
+                    <p>2. Entra a YouTube en tu navegador, abre la extensión y descarga <strong>cookies.txt</strong>.</p>
+                    <p>3. Pon ese archivo en la carpeta del proyecto y listo.</p>
+                  </div>
                 </div>
               )}
             </div>
 
             {/* History Header */}
-            <span className="text-[9px] text-gray-500 uppercase font-black tracking-widest shrink-0 block mt-1">Archivos Guardados ({downloadsList.length})</span>
+            <div className="flex items-center justify-between mt-1 mb-1">
+              <span className="text-[9px] text-gray-500 uppercase font-black tracking-widest shrink-0 block">Archivos Guardados ({downloadsList.length})</span>
+              <button 
+                onClick={async () => {
+                  try {
+                    await fetch('http://localhost:3001/open-folder', { method: 'POST' });
+                  } catch (err) {
+                    alert('No se pudo abrir la carpeta. Asegúrate de que el servidor proxy esté corriendo.');
+                  }
+                }}
+                className="text-[8px] bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white px-2 py-0.5 rounded-full border border-white/10 transition-all flex items-center gap-1"
+                title="Abrir carpeta de descargas en el explorador de archivos"
+              >
+                <span>📂 Abrir Carpeta</span>
+              </button>
+            </div>
 
             {/* Archive List */}
             <div className="flex-1 overflow-y-auto pr-1 min-h-0 custom-scrollbar space-y-2">

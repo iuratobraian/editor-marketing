@@ -35,15 +35,22 @@ async function findYtDlp() {
 
 // Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
 async function detectBestArgs(ytdlp, url) {
+  // Common args for all attempts
+  const commonArgs = [
+    '--no-check-certificate',
+    '--no-playlist',
+    '--js-runtimes', 'node',
+    '--remote-components', 'ejs:github',
+    '--extractor-args', 'youtube:player-client=ios,web,android,mweb'
+  ];
+
   // 1. Check if a local cookies.txt file exists in the project root directory
   const localCookiesPath = path.join(__dirname, '..', 'cookies.txt');
   if (fs.existsSync(localCookiesPath)) {
     console.log(`[yt-dlp] ¡Encontrado archivo local cookies.txt! Usando para la descarga.`);
     return [
-      '--js-runtimes', 'node',
-      '--remote-components', 'ejs:github',
-      '--cookies', localCookiesPath,
-      '--extractor-args', 'youtube:player-client=ios,web'
+      ...commonArgs,
+      '--cookies', localCookiesPath
     ];
   }
 
@@ -52,11 +59,8 @@ async function detectBestArgs(ytdlp, url) {
   for (const browser of browsers) {
     try {
       const testArgs = [
-        '--no-playlist',
-        '--js-runtimes', 'node',
-        '--remote-components', 'ejs:github',
+        ...commonArgs,
         '--cookies-from-browser', browser,
-        '--extractor-args', 'youtube:player-client=ios,web',
         '--get-filename',
         url
       ];
@@ -64,10 +68,8 @@ async function detectBestArgs(ytdlp, url) {
       await execFileAsync(ytdlp, testArgs);
       console.log(`[yt-dlp] ¡Éxito! Usando cookies de ${browser}.`);
       return [
-        '--js-runtimes', 'node',
-        '--remote-components', 'ejs:github',
-        '--cookies-from-browser', browser,
-        '--extractor-args', 'youtube:player-client=ios,web'
+        ...commonArgs,
+        '--cookies-from-browser', browser
       ];
     } catch (err) {
       // Failed, try next
@@ -75,11 +77,11 @@ async function detectBestArgs(ytdlp, url) {
   }
 
   // Fallback to purely client-spoofing and js-runtimes without cookies
-  console.log(`[yt-dlp] No se encontraron cookies de navegador válidas. Usando extractor spoofing sin cookies.`);
+  console.log(`[yt-dlp] No se encontraron cookies de navegador válidas. Usando extractor spoofing agresivo sin cookies.`);
   return [
-    '--js-runtimes', 'node',
-    '--remote-components', 'ejs:github',
-    '--extractor-args', 'youtube:player-client=ios,web'
+    ...commonArgs,
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    '--referer', 'https://www.google.com/'
   ];
 }
 
