@@ -3,6 +3,14 @@ import { useEditorStore } from '../stores/editorStore';
 import { Scissors, Mic, MicOff, Trash2 } from 'lucide-react';
 import { getClipPlayDuration } from './VideoCompositor';
 
+// Helper to avoid toFixed errors on null/undefined
+const safeToFixed = (value: any, decimals = 2): string => {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value.toFixed(decimals);
+  }
+  return '0.00';
+};
+
 interface VideoTimelineProps {
   timelineHeight: number;
   handleTimelineHeightResize: (e: React.PointerEvent) => void;
@@ -102,7 +110,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
   };
 
   return (
-    <div style={{ height: `${timelineHeight}px` }} className="bg-[#09090b] flex flex-col shrink-0 relative w-full border-t border-white/5 select-none">
+    <div style={{ height: `${timelineHeight}px` }} className="bg-[#09090b] flex flex-col shrink-0 relative w-full border-t border-white/5 select-none overflow-x-auto">
       {/* Height Resize Handle */}
       <div 
         className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize bg-transparent hover:bg-emerald-500/40 active:bg-emerald-500/80 transition-colors z-[99]"
@@ -111,45 +119,63 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
     
       {/* Timeline header track labels & zoom ruler */}
       <div className="h-10 border-b border-white/5 flex items-center text-[10px] text-gray-500 tracking-wider font-mono">
-        <div className="w-[120px] px-5 font-bold uppercase shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+         <div className="w-[120px] px-5 font-bold uppercase shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
           <span>Pistas</span>
-          <div className="flex gap-1">
-            {/* Scissors cut split button */}
-            <button 
-              onClick={handleSplitClip}
-              disabled={videoClips.length === 0}
-              className="p-1 hover:text-white text-gray-500 disabled:opacity-30 transition-colors cursor-pointer"
-              title="Dividir clip en el cursor (Tecla S)"
-            >
-              <Scissors size={12} />
-            </button>
-            
-            {/* Real-time Mic Voiceover Recorder */}
-            <button 
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`p-1 transition-colors cursor-pointer ${
-                isRecording 
-                  ? 'text-red-500 animate-pulse' 
-                  : 'text-gray-500 hover:text-white'
-              }`}
-              title={isRecording ? "Detener Grabación de Voz" : "Grabar Voz en Off en el cursor"}
-            >
-              {isRecording ? <MicOff size={12} /> : <Mic size={12} />}
-            </button>
-          </div>
+            <div className="flex gap-1">
+              {/* Scissors cut split button */}
+              <button 
+                onClick={handleSplitClip}
+                disabled={videoClips.length === 0}
+                className="p-1 hover:text-white text-gray-500 disabled:opacity-30 transition-colors cursor-pointer"
+                title="Dividir clip en el cursor (Tecla S)"
+              >
+                <Scissors size={12} />
+              </button>
+              
+              {/* Real-time Mic Voiceover Recorder */}
+              <button 
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`p-1 transition-colors cursor-pointer ${
+                  isRecording 
+                    ? 'text-red-500 animate-pulse' 
+                    : 'text-gray-500 hover:text-white'
+                }`}
+                title={isRecording ? "Detener Grabación de Voz" : "Grabar Voz en Off en el cursor"}
+              >
+                {isRecording ? <MicOff size={12} /> : <Mic size={12} />}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 ml-2 border-l border-white/10 pl-2">
+                <button 
+                    onClick={() => setTimelineZoom(Math.max(0.5, timelineZoom - 0.1))}
+                    className="p-1 hover:text-white text-gray-500 transition-colors"
+                    title="Zoom out"
+                >
+                    -
+                </button>
+                <span className="text-[8px] font-mono text-gray-400 w-8 text-center">{safeToFixed(timelineZoom, 1)}x</span>
+                <button 
+                    onClick={() => setTimelineZoom(Math.min(3.0, timelineZoom + 0.1))}
+                    className="p-1 hover:text-white text-gray-500 transition-colors"
+                    title="Zoom in"
+                >
+                    +
+                </button>
+            </div>
         </div>
         
         {/* Visual Ruler */}
-        <div 
-          ref={timelineTrackRef}
-          className="flex-1 h-full relative cursor-pointer" 
-          onClick={handleTimelineScrub}
-        >
+         <div 
+           ref={timelineTrackRef}
+           className="flex-1 h-full relative cursor-pointer" 
+           onClick={handleTimelineScrub}
+           style={{ minWidth: `${100 * timelineZoom}%` }}
+         >
           {Array.from({ length: Math.ceil(Math.max(timelineDuration, 5)) + 1 }).map((_, idx) => (
             <div 
               key={idx} 
               className="absolute bottom-0 h-4 border-l border-white/10 flex flex-col justify-between"
-              style={{ left: `${(idx / Math.max(timelineDuration, 5)) * 100}%` }}
+              style={{ left: `${(idx / Math.max(timelineDuration, 5)) * 100 * timelineZoom}%` }}
             >
               <span className="text-[8px] transform -translate-x-1/2 -translate-y-4 select-none">
                 {idx}s
@@ -161,7 +187,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
           {timelineDuration > 0 && (
             <div 
               className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-50 pointer-events-none"
-              style={{ left: `${(playbackTime / timelineDuration) * 100}%` }}
+               style={{ left: `${(playbackTime / timelineDuration) * 100 * timelineZoom}%` }}
             >
               <div className="w-2.5 h-2.5 bg-red-500 rounded-full transform -translate-x-[40%] -translate-y-[40%]" />
             </div>
@@ -174,14 +200,14 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
         
         {/* V5: AJUSTES TRACK */}
         <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>V5 Ajustes</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {adjustmentClips.map((clip) => {
               const clipDuration = getClipPlayDuration(clip);
-              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -229,7 +255,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                   )}
                   <span className="text-[8.5px] font-bold truncate block text-indigo-300">🎛️ {clip.name}</span>
                   <div className="flex items-center gap-1 z-20 shrink-0">
-                    <span className="text-[7.5px] text-indigo-400 font-mono">{clipDuration.toFixed(1)}s</span>
+                    <span className="text-[7.5px] text-indigo-400 font-mono">{safeToFixed(clipDuration, 1)}s</span>
                     <button 
                       onClick={(e) => { e.stopPropagation(); deleteClip(clip.id); }}
                       className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors"
@@ -247,14 +273,14 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
         {/* V4: TITULOS TRACK */}
         {titleClips.length > 0 && (
           <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/20 shrink-0">
-            <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+            <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
               <span>V4 Títulos</span>
             </div>
-            <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+            <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
               {titleClips.map((clip) => {
                 const clipDuration = getClipPlayDuration(clip);
-                const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
-                const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+               const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+               const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
                 return (
                   <div 
@@ -302,7 +328,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     )}
                     <div className="flex justify-between items-center gap-1">
                       <span className="text-[8.5px] font-bold truncate block">{clip.name}</span>
-                      <span className="text-[7px] text-gray-400 font-mono shrink-0">{clipDuration.toFixed(1)}s</span>
+                      <span className="text-[7px] text-gray-400 font-mono shrink-0">{safeToFixed(clipDuration, 1)}s</span>
                     </div>
                   </div>
                 );
@@ -313,14 +339,14 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* V3: EFECTOS TRACK */}
         <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>V3 Efectos</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {effectClips.map((clip) => {
               const clipDuration = getClipPlayDuration(clip);
-              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -368,7 +394,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                   )}
                   <span className="text-[8.5px] font-bold truncate block text-pink-300">✨ {clip.name}</span>
                   <div className="flex items-center gap-1 z-20 shrink-0">
-                    <span className="text-[7.5px] text-pink-400 font-mono">{clipDuration.toFixed(1)}s</span>
+                    <span className="text-[7.5px] text-pink-400 font-mono">{safeToFixed(clipDuration, 1)}s</span>
                     <button 
                       onClick={(e) => { e.stopPropagation(); deleteClip(clip.id); }}
                       className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors"
@@ -385,14 +411,14 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* V2: SUPERPOSICIONES TRACK */}
         <div className="h-11 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/20 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>V2 Superposiciones</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {mediaOverlayClips.map((clip) => {
               const clipDuration = getClipPlayDuration(clip);
-              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -459,12 +485,13 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* V1: VIDEO PRINCIPAL TRACK */}
         <div className="h-11 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>V1 Principal</span>
           </div>
-          <div
-            className="flex-1 h-full px-2 flex items-center gap-1 overflow-x-auto custom-scrollbar relative"
-            onDragOver={(e) => e.preventDefault()}
+           <div
+             className="flex-1 h-full px-2 flex items-center gap-1 overflow-x-auto custom-scrollbar relative"
+             style={{ minWidth: `${100 * timelineZoom}%` }}
+             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
               handleBaseClipDrop();
@@ -472,7 +499,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
           >
             {baseClips.map((clip, idx) => {
               const clipDuration = getClipPlayDuration(clip);
-              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
+               const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
               
               return (
                 <React.Fragment key={clip.id}>
@@ -542,7 +569,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     </div>
                     <div className="flex justify-between items-center text-[7px] text-gray-400 font-mono leading-none">
                       <span>{clip.type === 'video' ? '🎬 Base' : '🖼️ Base'}</span>
-                      <span>{clipDuration.toFixed(1)}s</span>
+                      <span>{safeToFixed(clipDuration, 1)}s</span>
                     </div>
                   </div>
 
@@ -564,13 +591,13 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* A1: MUSICA TRACK */}
         <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/20 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>A1 Música</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {musicTracks.map((track) => {
-              const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -620,7 +647,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     <span className="text-[8px] font-bold truncate block">🎵 {track.name}</span>
                     <div className="flex items-center gap-1 text-[7px] text-gray-400 font-mono shrink-0">
                       <span>V:{track.volume}%</span>
-                      <span>{track.duration.toFixed(0)}s</span>
+                      <span>{safeToFixed(track.duration, 0)}s</span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); deleteAudioTrack(track.id); }}
                         className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors z-20 shrink-0"
@@ -637,13 +664,13 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* A2: EFECTOS DE SONIDO TRACK */}
         <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>A2 FX Sonidos</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {fxTracks.map((track) => {
-              const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -693,7 +720,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     <span className="text-[8px] font-bold truncate block">⚡ {track.name}</span>
                     <div className="flex items-center gap-1 text-[7px] text-gray-400 font-mono shrink-0">
                       <span>V:{track.volume}%</span>
-                      <span>{track.duration.toFixed(0)}s</span>
+                      <span>{safeToFixed(track.duration, 0)}s</span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); deleteAudioTrack(track.id); }}
                         className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors z-20 shrink-0"
@@ -710,13 +737,13 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
         {/* A3: VOZ EN OFF TRACK */}
         <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/20 shrink-0">
-          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between sticky left-0 z-20">
             <span>A3 Voz en Off</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+           <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]" style={{ minWidth: `${100 * timelineZoom}%` }}>
             {voiceTracks.map((track) => {
-              const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100;
-              const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100;
+const percentWidth = (track.duration / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
+const startOffset = (track.timelineStart / Math.max(timelineDuration, 5)) * 100 * timelineZoom;
 
               return (
                 <div 
@@ -766,7 +793,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     <span className="text-[8px] font-bold truncate block">🎙️ {track.name}</span>
                     <div className="flex items-center gap-1 text-[7px] text-gray-400 font-mono shrink-0">
                       <span>V:{track.volume}%</span>
-                      <span>{track.duration.toFixed(0)}s</span>
+                      <span>{safeToFixed(track.duration, 0)}s</span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); deleteAudioTrack(track.id); }}
                         className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors z-20 shrink-0"
