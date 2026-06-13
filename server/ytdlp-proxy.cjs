@@ -236,6 +236,15 @@ const server = http.createServer(async (req, res) => {
             url
           ]);
 
+          proc.stdout.on('data', data => {
+            const lines = data.toString().split('\n');
+            for (const line of lines) {
+              if (line.includes('[download]') || line.includes('[Merger]')) {
+                console.log(`[yt-dlp] ${line.trim()}`);
+              }
+            }
+          });
+
           let stderr = '';
           proc.stderr.on('data', d => stderr += d);
           proc.on('close', code => {
@@ -316,6 +325,15 @@ const server = http.createServer(async (req, res) => {
             '--output', path.join(DOWNLOADS_DIR, filename),
             url
           ]);
+
+          proc.stdout.on('data', data => {
+            const lines = data.toString().split('\n');
+            for (const line of lines) {
+              if (line.includes('[download]') || line.includes('[Merger]')) {
+                console.log(`[yt-dlp] ${line.trim()}`);
+              }
+            }
+          });
 
           let stderr = '';
           proc.stderr.on('data', d => stderr += d);
