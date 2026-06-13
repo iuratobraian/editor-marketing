@@ -232,9 +232,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const formatSelection = quality === '360p'
-          ? 'best[height<=360][ext=mp4]/mp4'
-          : 'best[height<=720][ext=mp4]/mp4';
+        const formatSelection = 'bestvideo+bestaudio/best';
 
         // Get expected filename
         let filename = `yt_video_${Date.now()}.mp4`;
@@ -242,6 +240,7 @@ const server = http.createServer(async (req, res) => {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
             '-f', formatSelection,
+            '--merge-output-format', 'mp4',
             '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
             '--get-filename',
             url
@@ -255,6 +254,7 @@ const server = http.createServer(async (req, res) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
             '-f', formatSelection,
+            '--merge-output-format', 'mp4',
             '--no-post-overwrites',
             '--output', path.join(DOWNLOADS_DIR, filename),
             url

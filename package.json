@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/dev-runner.cjs",
     "server": "node server/ytdlp-proxy.cjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
