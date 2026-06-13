@@ -41,6 +41,7 @@ async function detectBestArgs(ytdlp, url) {
     console.log(`[yt-dlp] ¡Encontrado archivo local cookies.txt! Usando para la descarga.`);
     return [
       '--js-runtimes', 'node',
+      '--remote-components', 'ejs:github',
       '--cookies', localCookiesPath,
       '--extractor-args', 'youtube:player-client=ios,web'
     ];
@@ -53,6 +54,7 @@ async function detectBestArgs(ytdlp, url) {
       const testArgs = [
         '--no-playlist',
         '--js-runtimes', 'node',
+        '--remote-components', 'ejs:github',
         '--cookies-from-browser', browser,
         '--extractor-args', 'youtube:player-client=ios,web',
         '--get-filename',
@@ -63,6 +65,7 @@ async function detectBestArgs(ytdlp, url) {
       console.log(`[yt-dlp] ¡Éxito! Usando cookies de ${browser}.`);
       return [
         '--js-runtimes', 'node',
+        '--remote-components', 'ejs:github',
         '--cookies-from-browser', browser,
         '--extractor-args', 'youtube:player-client=ios,web'
       ];
@@ -75,6 +78,7 @@ async function detectBestArgs(ytdlp, url) {
   console.log(`[yt-dlp] No se encontraron cookies de navegador válidas. Usando extractor spoofing sin cookies.`);
   return [
     '--js-runtimes', 'node',
+    '--remote-components', 'ejs:github',
     '--extractor-args', 'youtube:player-client=ios,web'
   ];
 }
