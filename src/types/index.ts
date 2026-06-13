@@ -2,7 +2,7 @@ export type ElementType = 'text' | 'image' | 'icon' | 'shape' | 'chart';
 export type TextBgStyle = 'none' | 'solid' | 'glass' | 'gradient';
 export type TextEffect = 'none' | 'shadow' | 'neon' | 'outline' | 'text-gradient' | 'glitch';
 export type CanvasFormat = '1:1' | '9:16' | '16:9' | '3:1';
-export type AppMode = 'image' | 'video';
+export type AppMode = 'image' | 'video' | 'selection';
 export type TransitionType = 'fade' | 'slide-left' | 'zoom-in' | 'blur' | 'camera-open' | 'camera-close' | 'blocks';
 export type RightPanelTab = 'inspector' | 'layers';
 

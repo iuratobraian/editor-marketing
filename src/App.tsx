@@ -4,6 +4,7 @@ import LeftSidebar from './components/LeftSidebar';
 import Canvas from './components/Canvas';
 import RightSidebar from './components/RightSidebar';
 import VideoCompositor from './components/VideoCompositor';
+import ModeSelection from './components/ModeSelection';
 import { useEditorStore } from './stores/editorStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
@@ -33,6 +34,9 @@ export default function App() {
       {/* 2. WORKSPACE CONTAINER */}
       <div className="flex flex-1 overflow-hidden">
         
+        {/* MODE SELECTION SCREEN */}
+        {mode === 'selection' && <ModeSelection />}
+
         {/* DESIGN STUDIO MODE */}
         {mode === 'image' && (
           <>
@@ -54,3 +58,4 @@ export default function App() {
     </div>
   );
 }
+

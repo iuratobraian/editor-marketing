@@ -14,12 +14,76 @@ export default function Header() {
     future,
     videoClips,
     audioTracks,
-    elements
+    elements,
+    addElement,
+    addVideoClip,
+    gridSettings,
+    setGridSettings
   } = useEditorStore();
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const handleImportMedia = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const url = URL.createObjectURL(file);
+      const isVideo = file.type.startsWith('video/');
+
+      if (mode === 'image') {
+        if (isVideo) {
+          alert('En el modo Diseño, solo se permiten imágenes.');
+          return;
+        }
+        addElement('image', url);
+      } else {
+        // Video mode
+        addVideoClip({
+          url,
+          name: file.name,
+          type: isVideo ? 'video' : 'image',
+          duration: 5, // Dummy duration for now
+          startTrim: 0,
+          endTrim: 5,
+          volume: 100,
+          brightness: 100,
+          contrast: 100,
+          saturate: 100,
+          blur: 0,
+          grayscale: 0,
+          sepia: 0,
+          hueRotate: 0,
+          opacity: 100,
+          scale: 100,
+          x: 0,
+          y: 0,
+          width: 1920,
+          height: 1080,
+          improveSound: false,
+          improveImage: false,
+          transitionType: 'none',
+          transitionDuration: 500,
+          placementMode: 'sequence',
+          timelineStart: 0,
+          speedMode: 'constant',
+          constantSpeed: 1.0,
+          speedCurvePreset: 'none',
+          curvePoints: [1.0, 1.0, 1.0, 1.0, 1.0],
+          fitMode: 'contain',
+          objectPositionX: 50,
+          objectPositionY: 50,
+          zoomEffect: 'none',
+        } as any); // Using any because of partial implementation in addVideoClip
+      }
+    };
+    input.click();
+  };
 
   const handleNewProject = () => {
     if (confirm('¿Estás seguro de que deseas iniciar un nuevo proyecto? Se perderán los cambios no guardados.')) {
@@ -97,17 +161,22 @@ export default function Header() {
                 {activeMenu === menu && (
                   <div className="absolute left-0 mt-1.5 w-56 bg-[#161B25] border border-[#232A36] rounded-xl shadow-2xl py-1.5 z-[999] animate-fade-in">
                     {menuItems[menu].map((item, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          setActiveMenu(null);
-                          if (item.includes('Nuevo Proyecto')) handleNewProject();
-                          else if (item.includes('Guardar Proyecto')) handleSaveProject();
-                          else if (item.includes('Configuración del Proyecto')) setShowSettingsModal(true);
-                          else alert(`Acción ejecutada: ${item}`);
-                        }}
-                        className="w-full text-left px-4 py-2 text-[10px] text-gray-300 hover:bg-[#7B5CFF]/10 hover:text-white transition-colors flex justify-between items-center"
-                      >
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setActiveMenu(null);
+                            if (item.includes('Nuevo Proyecto')) handleNewProject();
+                            else if (item.includes('Guardar Proyecto')) handleSaveProject();
+                            else if (item.includes('Importar Media')) handleImportMedia();
+                            else if (item.includes('Configuración del Proyecto')) setShowSettingsModal(true);
+                            else if (item.includes('Mostrar Grid')) setGridSettings({ snapToGrid: !gridSettings.snapToGrid });
+                            else if (item.includes('Salir')) window.close();
+                            else alert(`Acción ejecutada: ${item}`);
+                          }}
+
+                          className="w-full text-left px-4 py-2 text-[10px] text-gray-300 hover:bg-[#7B5CFF]/10 hover:text-white transition-colors flex justify-between items-center"
+                        >
+
                         <span>{item.split('(')[0].trim()}</span>
                         {item.includes('(') && (
                           <span className="text-[8px] text-gray-500 font-mono">

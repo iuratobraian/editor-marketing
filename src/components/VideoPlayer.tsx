@@ -646,7 +646,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     return (
                       <div style={style} className="w-full h-full">
                         {clip.type === 'video' ? (
-                          <video src={getSafeUrl(clip.url)} className="w-full h-full object-cover" muted />
+                          <video src={getSafeUrl(clip.proxyUrl || clip.url)} className="w-full h-full object-cover" muted />
                         ) : clip.type === 'text' ? (
                           <div 
                             className="w-full h-full flex items-center justify-center p-4 text-center font-bold break-words select-none leading-normal"

@@ -159,7 +159,7 @@ interface EditorStore {
   setMasterAmbientVolume: (volume: number) => void;
   setMasterMusicVolume: (volume: number) => void;
 
-  addVideoClip: (clip: Omit<VideoClip, 'id' | 'brightness' | 'contrast' | 'saturate' | 'blur' | 'grayscale' | 'sepia' | 'hueRotate' | 'opacity' | 'scale' | 'x' | 'y' | 'width' | 'height' | 'improveSound' | 'improveImage' | 'transitionType' | 'transitionDuration'> & Partial<Pick<VideoClip, 'x' | 'y' | 'width' | 'height'>>) => void;
+  addVideoClip: (clip: Omit<VideoClip, 'id' | 'brightness' | 'contrast' | 'saturate' | 'blur' | 'grayscale' | 'sepia' | 'hueRotate' | 'opacity' | 'scale' | 'x' | 'y' | 'width' | 'height' | 'improveSound' | 'improveImage' | 'transitionType' | 'transitionDuration'> & Partial<Pick<VideoClip, 'x' | 'y' | 'width' | 'height'>>, idOverride?: string) => void;
   updateClip: (id: string, updates: Partial<VideoClip>) => void;
   deleteClip: (id: string) => void;
   reorderClips: (startIndex: number, endIndex: number) => void;
@@ -194,7 +194,7 @@ export const useEditorStore = create<EditorStore>()(
   persist(
     (set, get) => ({
       // Mode State
-      mode: 'image',
+      mode: 'selection',
       setMode: (mode) => set({ mode }),
 
       // Branding Kit State
@@ -878,8 +878,8 @@ export const useEditorStore = create<EditorStore>()(
       setMasterAmbientVolume: (masterAmbientVolume) => set({ masterAmbientVolume }),
       setMasterMusicVolume: (masterMusicVolume) => set({ masterMusicVolume }),
 
-      addVideoClip: (clip) => {
-        const id = `clip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      addVideoClip: (clip, idOverride) => {
+        const id = idOverride || `clip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const format = get().format;
         const dims = CANVAS_DIMENSIONS[format] || { w: 1080, h: 1920 };
         

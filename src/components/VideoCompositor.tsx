@@ -56,6 +56,22 @@ const convertSvgUrlToPngDataUrl = async (svgUrl: string): Promise<string> => {
   });
 };
 
+// Helper to get or create proxy for a video
+const getProxyUrl = async (clipId: string, originalUrl: string, onProgress: (p: number) => void): Promise<string> => {
+  const db = await openDB('EditorMarketingDB', 1, {
+    upgrade(db) { db.createObjectStore('proxies'); }
+  });
+  
+  // Hash or clipId as key
+  const proxyKey = `proxy_${clipId}`;
+  const cached = await db.get('proxies', proxyKey);
+  if (cached) return URL.createObjectURL(cached);
+
+  // If not cached, need to generate (requires ffmpeg instance)
+  // For now return original to avoid circular dependency with VideoExportEngine
+  return originalUrl;
+};
+
 export const getClipPlayDuration = (clip: VideoClip): number => {
   const origDur = clip.endTrim - clip.startTrim;
   if (clip.type === 'image') return origDur;
@@ -717,23 +733,7 @@ export default function VideoCompositor() {
     return () => resizeObserver.disconnect();
   }, [format, videoClips]);
 
-  import { openDB } from 'idb';
-
-// Helper to get or create proxy for a video
-const getProxyUrl = async (clipId: string, originalUrl: string, onProgress: (p: number) => void): Promise<string> => {
-  const db = await openDB('EditorMarketingDB', 1, {
-    upgrade(db) { db.createObjectStore('proxies'); }
-  });
-  
-  // Hash or clipId as key
-  const proxyKey = `proxy_${clipId}`;
-  const cached = await db.get('proxies', proxyKey);
-  if (cached) return URL.createObjectURL(cached);
-
-  // If not cached, need to generate (requires ffmpeg instance)
-  // For now return original to avoid circular dependency with VideoExportEngine
-  return originalUrl;
-};
+  const resizeInfoRef = useRef<{
     handle: string | null; // 'move' | 'tl' | 'tr' | 'bl' | 'br'
     initialPointer: { x: number; y: number };
     initialClipLayout: { x: number; y: number; width: number; height: number };

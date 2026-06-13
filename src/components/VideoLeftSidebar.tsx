@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { generateProxy } from '../lib/proxyHelper';
 import { useEditorStore, CANVAS_DIMENSIONS } from '../stores/editorStore';
 import { EFFECT_CATEGORIES, getEffectsByCategory } from '../lib/videoEffects';
 import type { EffectCategory } from '../lib/videoEffects';
@@ -120,7 +121,8 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
       tempVid.preload = 'metadata';
       tempVid.src = file.url;
       tempVid.onloadedmetadata = () => {
-        addVideoClip({
+        const id = `clip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const clipData = {
           type: 'video',
           url: file.url,
           name: file.name,
@@ -128,8 +130,10 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
           startTrim: 0,
           endTrim: tempVid.duration || 10,
           volume: 100,
-          placementMode: addMode
-        });
+        };
+        addVideoClip(clipData as any, id);
+        generateProxy(id, file.url, (p) => console.log(`Proxy: ${p}%`)).then(proxyUrl => updateClip(id, { proxyUrl }));
+        tempVid.remove();
       };
       tempVid.onerror = () => {
         addVideoClip({
