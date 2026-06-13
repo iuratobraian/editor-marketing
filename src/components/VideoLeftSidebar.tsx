@@ -576,7 +576,21 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                 )}
               </button>
               {youtubeError && (
-                <p className="text-[8px] text-red-400 font-semibold leading-tight">{youtubeError}</p>
+                <div className="space-y-1 mt-1.5 p-2 bg-red-950/20 border border-red-500/20 rounded-lg">
+                  <p className="text-[8px] text-red-400 font-black leading-tight">❌ Error de descarga</p>
+                  <p className="text-[7.5px] text-red-400/90 leading-tight">{youtubeError}</p>
+                  <p className="text-[7.5px] text-gray-400 leading-normal pt-1 border-t border-white/5">
+                    💡 <strong>Solución rápida y definitiva:</strong>
+                    <br />
+                    1. Instala la extensión de Chrome/Firefox <strong>"Get cookies.txt LOCALLY"</strong>.
+                    <br />
+                    2. Entra a YouTube en tu navegador.
+                    <br />
+                    3. Haz clic en la extensión y descarga el archivo <strong>cookies.txt</strong>.
+                    <br />
+                    4. Guárdalo en la carpeta del editor (raíz del proyecto) y vuelve a intentar.
+                  </p>
+                </div>
               )}
             </div>
 

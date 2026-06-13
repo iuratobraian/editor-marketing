@@ -35,6 +35,17 @@ async function findYtDlp() {
 
 // Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
 async function detectBestArgs(ytdlp, url) {
+  // 1. Check if a local cookies.txt file exists in the project root directory
+  const localCookiesPath = path.join(__dirname, '..', 'cookies.txt');
+  if (fs.existsSync(localCookiesPath)) {
+    console.log(`[yt-dlp] ¡Encontrado archivo local cookies.txt! Usando para la descarga.`);
+    return [
+      '--js-runtimes', 'node',
+      '--cookies', localCookiesPath,
+      '--extractor-args', 'youtube:player-client=ios,web'
+    ];
+  }
+
   const browsers = ['chrome', 'firefox', 'brave', 'chromium', 'opera', 'edge'];
   
   for (const browser of browsers) {
