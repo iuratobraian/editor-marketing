@@ -51,6 +51,12 @@ const RESOLUTION_MAP: Record<CanvasFormat, { w: number; h: number }> = {
   '3:1': { w: 1500, h: 500 },
 };
 
+function inferFileExtension(url: string, fallback: string) {
+  const clean = url.toLowerCase().split('?')[0].split('#')[0];
+  const match = clean.match(/\.([a-z0-9]+)$/i);
+  return match ? match[1] : fallback;
+}
+
 /**
  * Helper to fetch a Blob URL and convert it to a Uint8Array for FFmpeg MEMFS.
  */
@@ -91,6 +97,19 @@ async function fetchFileBytes(url: string): Promise<Uint8Array> {
     }
     throw err;
   }
+}
+
+async function createEsmWrapperBlobUrl(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar el core de FFmpeg (${response.status}).`);
+  }
+
+  const source = await response.text();
+  const wrappedSource = `${source}\nexport default createFFmpegCore;\n`;
+  return URL.createObjectURL(
+    new Blob([wrappedSource], { type: 'text/javascript' })
+  );
 }
 
 /**
@@ -143,7 +162,7 @@ export class VideoExportEngine {
     }
 
     const baseURL = window.location.origin + normalizedBase;
-    const coreURL = await toBlobURL(`${baseURL}ffmpeg/ffmpeg-core.js`, 'text/javascript');
+    const coreURL = await createEsmWrapperBlobUrl(`${baseURL}ffmpeg/ffmpeg-core.js`);
     const wasmURL = await toBlobURL(`${baseURL}ffmpeg/ffmpeg-core.wasm`, 'application/wasm');
 
     await this.ffmpeg.load({
@@ -179,12 +198,36 @@ export class VideoExportEngine {
       scaleRatio = 720 / 1080;
     } else if (quality === '4k') {
       scaleRatio = 2160 / 1080;
+    } else if (quality === 'whatsapp') {
+      scaleRatio = 720 / 1080; // Limit to 720p for WhatsApp to maintain efficiency
     }
     
     const w = Math.round((baseRes.w * scaleRatio) / 2) * 2;
     const h = Math.round((baseRes.h * scaleRatio) / 2) * 2;
 
+    // Calculate duration for bitrate targeting
+    let totalDuration = 0.1;
+    const seqClips = clips.filter(c => c.placementMode !== 'overlay');
+    seqClips.forEach(c => totalDuration += getClipPlayDuration(c));
+    const overlayClips = clips.filter(c => c.placementMode === 'overlay');
+    overlayClips.forEach(o => {
+      const end = (o.timelineStart || 0) + getClipPlayDuration(o);
+      if (end > totalDuration) totalDuration = end;
+    });
+
     onProgress(5); // Start progress indicator
+
+    // Base video codec args
+    let vCodecArgs = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23'];
+    if (quality === 'whatsapp') {
+      // Target 60MB (60 * 1024 * 1024 * 8 bits)
+      const targetSizeBytes = 60 * 1024 * 1024;
+      const targetBitrateKbps = Math.floor((targetSizeBytes * 8) / (totalDuration * 1000));
+      // Cap bitrate between 1000kbps and 5000kbps for WhatsApp
+      const bitrate = Math.min(Math.max(targetBitrateKbps, 1000), 5000);
+      onLog?.(`Optimizando para WhatsApp: Bitrate objetivo ${bitrate} kbps para una duración de ${totalDuration.toFixed(1)}s`);
+      vCodecArgs = ['-c:v', 'libx264', '-preset', 'medium', '-b:v', `${bitrate}k`, '-maxrate', `${bitrate}k`, '-bufsize', `${bitrate * 2}k`];
+    }
 
     // Clean MEMFS directory of any previous files
     try {
@@ -208,7 +251,7 @@ export class VideoExportEngine {
         clip.url.toLowerCase().includes('.gif?') || 
         clip.url.toLowerCase().includes('/gif')
       );
-      const ext = isGif ? 'gif' : (clip.type === 'image' ? 'png' : 'mp4');
+      const ext = isGif ? 'gif' : (clip.type === 'image' ? inferFileExtension(clip.url, 'png') : inferFileExtension(clip.url, 'mp4'));
       const inputFilename = `${prefix}_input_${i}.${ext}`;
       await ffmpeg.writeFile(inputFilename, fileBytes);
 
@@ -301,7 +344,7 @@ export class VideoExportEngine {
           '-i', `anullsrc=r=${AUDIO_SAMPLE_RATE}:cl=stereo`,
           '-t', `${playDuration.toFixed(3)}`,
           '-vf', vfString,
-          '-c:v', 'libx264',
+          ...vCodecArgs,
           '-r', `${VIDEO_FPS}`,
           '-pix_fmt', 'yuv420p',
           '-c:a', 'aac',
@@ -358,7 +401,7 @@ export class VideoExportEngine {
               '-i', inputFilename,
               '-vf', vfSeg,
               '-af', segAfParts.join(','),
-              '-c:v', 'libx264',
+              ...vCodecArgs,
               '-r', `${VIDEO_FPS}`,
               '-pix_fmt', 'yuv420p',
               '-c:a', 'aac',
@@ -431,7 +474,7 @@ export class VideoExportEngine {
             '-i', inputFilename,
             '-vf', vfString,
             '-af', afParts.join(','),
-            '-c:v', 'libx264',
+            ...vCodecArgs,
             '-r', `${VIDEO_FPS}`,
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac',
@@ -480,7 +523,7 @@ export class VideoExportEngine {
         '-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:d=${maxOverlayDur.toFixed(3)}:r=${VIDEO_FPS}`,
         '-f', 'lavfi', '-i', `anullsrc=r=${AUDIO_SAMPLE_RATE}:cl=stereo`,
         '-t', `${maxOverlayDur.toFixed(3)}`,
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+        ...vCodecArgs, '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-shortest',
         finalClipFile
       ]);
@@ -562,7 +605,7 @@ export class VideoExportEngine {
           '-filter_complex', filterComplex,
           '-map', `[${lastVideoOut}]`,
           '-map', `[${lastAudioOut}]`,
-          '-c:v', 'libx264',
+          ...vCodecArgs,
           '-pix_fmt', 'yuv420p',
           '-c:a', 'aac',
           '-r', `${VIDEO_FPS}`,
@@ -714,7 +757,7 @@ export class VideoExportEngine {
         '-filter_complex', filterComplexVideo,
         '-map', '[final_v]',
         '-map', '0:a',
-        '-c:v', 'libx264',
+        ...vCodecArgs,
         '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
         finalOverlayedVideo
@@ -730,7 +773,7 @@ export class VideoExportEngine {
     // Add background audio tracks
     for (let j = 0; j < audioTracks.length; j++) {
       const track = audioTracks[j];
-      const audioInputFilename = `bg_audio_${j}.mp3`;
+      const audioInputFilename = `bg_audio_${j}.${inferFileExtension(track.url, 'mp3')}`;
       const trackBytes = await fetchFileBytes(track.url);
       await ffmpeg.writeFile(audioInputFilename, trackBytes);
       

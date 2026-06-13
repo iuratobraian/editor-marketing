@@ -171,7 +171,7 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
   };
 
   const handleDeleteDownload = async (filename: string) => {
-    if (!confirm(`¿Estás seguro de que quieres eliminar "${filename.replace(/^yt_[^_]+_/, '').replace(/\.(mp3|mp4)$/, '')}"?`)) return;
+    if (!confirm(`¿Estás seguro de que quieres eliminar "${filename.replace(/^yt_(?:audio|video)_[^_]+_/, '').replace(/\.[^.]+$/, '')}"?`)) return;
     try {
       const response = await fetch(`http://localhost:3001/download/${encodeURIComponent(filename)}`, {
         method: 'DELETE'
@@ -636,8 +636,8 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                   onChange={e => setYoutubeFormat(e.target.value as any)} 
                   className="bg-black/60 border border-white/10 rounded-lg text-[9px] text-gray-300 px-1 focus:outline-none cursor-pointer"
                 >
-                  <option value="video">MP4 (Video)</option>
-                  <option value="audio">MP3 (Audio)</option>
+                  <option value="video">Máxima calidad (Video)</option>
+                  <option value="audio">Máxima calidad (Audio)</option>
                 </select>
               </div>
               <button 
@@ -658,6 +658,21 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                   <span>Descargar e Importar</span>
                 )}
               </button>
+              {isDownloadingYoutube && downloadProgress && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[7.5px] text-gray-500 font-mono">
+                    <span>{downloadProgress.percent.toFixed(1)}%</span>
+                    <span>{downloadProgress.speed || '...'}</span>
+                    <span>{downloadProgress.eta ? `ETA ${downloadProgress.eta}` : ''}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-black/50 border border-white/5 overflow-hidden">
+                    <div
+                      className="h-full bg-red-500 transition-[width] duration-150"
+                      style={{ width: `${Math.max(0, Math.min(100, downloadProgress.percent))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               {youtubeError && (
                 <div className="space-y-1 mt-1.5 p-2 bg-red-950/20 border border-red-500/20 rounded-lg">
                   <p className="text-[8px] text-red-400 font-black leading-tight">❌ Error de descarga / Cookies</p>
@@ -754,10 +769,22 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
       </div>
 
       {/* Hidden file inputs inside LeftSidebar */}
-      <input type="file" ref={fileInputRef} accept="video/*,image/*" multiple className="hidden" onChange={handleMediaUpload}/>
-      <input type="file" ref={audioInputRef} accept="audio/*" multiple className="hidden" onChange={handleAudioUpload}/>
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mpeg,.mpg,.3gp,.ts,.m2ts,.wmv,.flv,.ogv,image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
+        multiple
+        className="hidden"
+        onChange={handleMediaUpload}
+      />
+      <input
+        type="file"
+        ref={audioInputRef}
+        accept="audio/*,.mp3,.m4a,.mka,.aac,.wav,.flac,.ogg,.opus"
+        multiple
+        className="hidden"
+        onChange={handleAudioUpload}
+      />
     </div>
   );
 };
-
-

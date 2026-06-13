@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useEditorStore, CANVAS_DIMENSIONS } from '../stores/editorStore';
-import { Volume2, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
+import { Volume2, ArrowLeft, ArrowRight, Trash2, Sparkles, Scissors, RefreshCw, Mic } from 'lucide-react';
 import type { VideoClip, KeyframePoint } from '../types';
+import { detectSilentSections, detectSpeechSections } from '../lib/silenceTools';
+
+type ClipTextEffect = NonNullable<VideoClip['textEffect']>;
 
 interface VideoInspectorProps {
   handleExportVideo: () => void;
-  exportQuality: '720p' | '1080p' | '4k';
-  setExportQuality: (quality: '720p' | '1080p' | '4k') => void;
+  exportQuality: '720p' | '1080p' | '4k' | 'whatsapp';
+  setExportQuality: (quality: '720p' | '1080p' | '4k' | 'whatsapp') => void;
   timelineDuration: number;
   aspectRatioLock: boolean;
   setAspectRatioLock: (lock: boolean) => void;
@@ -41,6 +44,8 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
     applyEffectsToAllClips,
     playbackTime,
     addVideoClip,
+    setVideoClips,
+    setSelectedClipId,
   } = useEditorStore();
 
   const selectedClip = videoClips.find(c => c.id === selectedClipId);
@@ -68,9 +73,140 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
     lut: true,
     adjustSliders: true,
   });
+  const [silenceRemovalProgress, setSilenceRemovalProgress] = useState<number | null>(null);
+  const [isRemovingSilence, setIsRemovingSilence] = useState(false);
+  const [subtitleStyle, setSubtitleStyle] = useState<ClipTextEffect>('shadow');
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleRemoveSilence = async () => {
+    if (!selectedClip || selectedClip.type !== 'video') return;
+    if (!selectedClip.url) {
+      alert('Este clip no tiene una URL válida para analizar.');
+      return;
+    }
+
+    const confirmed = confirm('¿Quieres detectar y eliminar los silencios de este video?');
+    if (!confirmed) return;
+
+    setIsRemovingSilence(true);
+    setSilenceRemovalProgress(0);
+
+    try {
+      const analysis = await detectSilentSections(selectedClip.url, {
+        onProgress: (percent) => setSilenceRemovalProgress(percent),
+      });
+
+      if (analysis.keepSegments.length <= 1) {
+        alert('No se detectaron silencios suficientes para recortar.');
+        return;
+      }
+
+      const clipIndex = videoClips.findIndex((clip) => clip.id === selectedClip.id);
+      if (clipIndex < 0) return;
+
+      let accumulatedTimeline = selectedClip.timelineStart || 0;
+      const baseStartTrim = selectedClip.startTrim || 0;
+      const rebuiltClips: VideoClip[] = analysis.keepSegments.map((segment, segmentIndex) => {
+        const segmentDuration = Math.max(0, segment.end - segment.start);
+        const nextClip = {
+          ...selectedClip,
+          id: segmentIndex === 0 ? selectedClip.id : crypto.randomUUID(),
+          duration: segmentDuration,
+          startTrim: baseStartTrim + segment.start,
+          endTrim: baseStartTrim + segment.end,
+          timelineStart: accumulatedTimeline,
+        };
+        accumulatedTimeline += segmentDuration;
+        return nextClip;
+      });
+
+      const nextVideoClips = [
+        ...videoClips.slice(0, clipIndex),
+        ...rebuiltClips,
+        ...videoClips.slice(clipIndex + 1),
+      ];
+
+      setVideoClips(nextVideoClips);
+      setSelectedClipId(rebuiltClips[0]?.id || null);
+      alert(
+        `Se redujeron ${analysis.removedDuration.toFixed(1)}s de silencio en ${analysis.keepSegments.length} segmento(s).`
+      );
+    } catch (err: any) {
+      alert(`No se pudo analizar el silencio: ${err.message || 'error desconocido'}`);
+    } finally {
+      setIsRemovingSilence(false);
+      setSilenceRemovalProgress(null);
+    }
+  };
+
+  const addGeneratedSubtitles = (segments: Array<{ start: number; end: number; text: string }>, opts?: { lowerThird?: number }) => {
+    const dims = CANVAS_DIMENSIONS[format] || { w: 1080, h: 1920 };
+    const baseY = opts?.lowerThird !== undefined ? opts.lowerThird : dims.h * 0.8;
+
+    segments.forEach((sub, idx) => {
+      addVideoClip({
+        type: 'text',
+        placementMode: 'overlay',
+        timelineStart: sub.start,
+        duration: Math.max(0.2, sub.end - sub.start),
+        startTrim: 0,
+        endTrim: Math.max(0.2, sub.end - sub.start),
+        url: '',
+        name: `Sub: ${sub.text.substring(0, 15)}...`,
+        textContent: sub.text,
+        textFontSize: 40,
+        textColor: '#ffffff',
+        textFontFamily: 'Montserrat',
+        textEffect: subtitleStyle,
+        volume: 0,
+        x: 50,
+        y: Math.max(0, baseY - (idx % 3) * 6),
+        width: dims.w,
+        height: 120,
+        fitMode: 'contain'
+      } as any);
+    });
+  };
+
+  const handleCreateSubtitlesFromSound = async () => {
+    if (!selectedClip || selectedClip.type !== 'video') return;
+    if (!selectedClip.url) {
+      alert('Este clip no tiene una URL válida para analizar.');
+      return;
+    }
+
+    const confirmed = confirm('¿Quieres detectar la voz y crear bloques de subtítulo a partir del audio?');
+    if (!confirmed) return;
+
+    setSilenceRemovalProgress(0);
+
+    try {
+      const speech = await detectSpeechSections(selectedClip.url, {
+        onProgress: (percent) => setSilenceRemovalProgress(percent),
+      });
+
+      if (speech.speechSegments.length === 0) {
+        alert('No se detectaron segmentos de voz suficientes.');
+        return;
+      }
+
+      const baseStart = selectedClip.timelineStart || 0;
+      const segments = speech.speechSegments.map((segment, index) => ({
+        start: baseStart + segment.start,
+        end: baseStart + segment.end,
+        text: `Subtítulo ${index + 1}`
+      }));
+
+      addGeneratedSubtitles(segments);
+      alert(`Se crearon ${segments.length} bloques de subtítulo a partir del audio.`);
+    } catch (err: any) {
+      alert(`No se pudo crear subtítulos desde el audio: ${err.message || 'error desconocido'}`);
+    } finally {
+      setSilenceRemovalProgress(null);
+    }
   };
 
   // Switch tabs automatically based on selected clip type
@@ -379,6 +515,21 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
                     <Sparkles size={14} className="text-red-400" />
                     <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Herramientas IA</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-gray-500 uppercase font-bold">Estilo de subtítulo</span>
+                    <select
+                      value={subtitleStyle}
+                      onChange={e => setSubtitleStyle(e.target.value as ClipTextEffect)}
+                      className="flex-1 bg-black border border-white/10 rounded-lg px-2 py-1 text-[9px] text-white outline-none focus:border-red-500/50 cursor-pointer"
+                    >
+                      <option value="shadow">Sombra</option>
+                      <option value="neon">Neón</option>
+                      <option value="glitch">Glitch</option>
+                      <option value="typing">Escritura</option>
+                      <option value="fade-zoom">Fade Zoom</option>
+                      <option value="bounce">Bounce</option>
+                    </select>
+                  </div>
                   <button
                     onClick={async (e) => {
                       if (!selectedClip) return;
@@ -422,6 +573,19 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
                         }
 
                         if (subtitlesList.length === 0) {
+                          const speech = await detectSpeechSections(selectedClip.url, {
+                            onProgress: (percent) => setSilenceRemovalProgress(percent),
+                          });
+                          if (speech.speechSegments.length > 0) {
+                            subtitlesList = speech.speechSegments.map((segment, idx) => ({
+                              start: segment.start,
+                              end: segment.end,
+                              text: `Subtítulo ${idx + 1}`,
+                            }));
+                          }
+                        }
+
+                        if (subtitlesList.length === 0) {
                           // Fallback simulation
                           const duration = selectedClip.duration || 10;
                           const samplePhrases = [
@@ -449,26 +613,14 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
 
                         // Add subtitles to timeline
                         if (subtitlesList.length > 0) {
-                          subtitlesList.forEach((sub) => {
-                            addClip({
-                              id: crypto.randomUUID(),
-                              type: 'text',
+                          addGeneratedSubtitles(
+                            subtitlesList.map((sub) => ({
+                              start: sub.start,
+                              end: sub.end,
                               text: sub.text,
-                              timelineStart: sub.start,
-                              duration: sub.end - sub.start,
-                              x: 50,
-                              y: 85,
-                              fontSize: 40,
-                              color: '#ffffff',
-                              fontWeight: '900',
-                              textAlign: 'center',
-                              shadowColor: 'rgba(0,0,0,0.8)',
-                              shadowBlur: 10,
-                              strokeColor: '#000000',
-                              strokeWidth: 2,
-                              track: 4
-                            });
-                          });
+                            })),
+                            { lowerThird: 85 }
+                          );
                           alert(`¡Se han añadido ${subtitlesList.length} segmentos de subtítulos!`);
                         }
                       } catch (err: any) {
@@ -483,6 +635,52 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
                     <Sparkles size={12} />
                     Generar Subtítulos Automáticos
                   </button>
+                </div>
+
+                {/* Silence removal */}
+                <div className="p-3 bg-cyan-500/5 border border-cyan-500/15 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Scissors size={14} className="text-cyan-400" />
+                    <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Recorte de silencios</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-snug">
+                    Analiza el audio del clip y divide los tramos muertos para dejar una versión más fluida.
+                  </p>
+                  <button
+                    onClick={handleRemoveSilence}
+                    disabled={isRemovingSilence || selectedClip.type !== 'video'}
+                    className="w-full bg-cyan-600/15 hover:bg-cyan-600/25 disabled:opacity-40 disabled:cursor-not-allowed text-cyan-300 border border-cyan-500/20 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    {isRemovingSilence ? (
+                      <>
+                        <RefreshCw size={12} className="animate-spin" />
+                        <span>{silenceRemovalProgress ? `Analizando ${silenceRemovalProgress.toFixed(0)}%` : 'Analizando...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Scissors size={12} />
+                        <span>Eliminar silencios</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCreateSubtitlesFromSound}
+                    disabled={selectedClip.type !== 'video'}
+                    className="w-full bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed text-white border border-white/10 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Mic size={12} />
+                    <span>Crear subtítulos por sonido</span>
+                  </button>
+                  {isRemovingSilence && silenceRemovalProgress !== null && (
+                    <div className="space-y-1">
+                      <div className="h-1.5 rounded-full bg-black/40 border border-white/5 overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-400 transition-[width] duration-150"
+                          style={{ width: `${Math.max(0, Math.min(100, silenceRemovalProgress))}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 1. TRANSFORMATION SECTION */}
@@ -881,6 +1079,19 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
                         }
 
                         if (subtitlesList.length === 0) {
+                          const speech = await detectSpeechSections(selectedClip.url, {
+                            onProgress: (percent) => setSilenceRemovalProgress(percent),
+                          });
+                          if (speech.speechSegments.length > 0) {
+                            subtitlesList = speech.speechSegments.map((segment, idx) => ({
+                              start: segment.start,
+                              end: segment.end,
+                              text: `Subtítulo ${idx + 1}`,
+                            }));
+                          }
+                        }
+
+                        if (subtitlesList.length === 0) {
                           // Fallback / local generation
                           const duration = selectedClip.duration || 10;
                           const samplePhrases = [
@@ -909,31 +1120,13 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
 
                         // Add subtitles to timeline
                         if (subtitlesList.length > 0) {
-                          const dims = CANVAS_DIMENSIONS[format] || { w: 1080, h: 1920 };
-                          
-                          subtitlesList.forEach((sub) => {
-                            addVideoClip({
-                              type: 'text',
-                              placementMode: 'overlay',
-                              timelineStart: sub.start,
-                              duration: sub.end - sub.start,
-                              startTrim: 0,
-                              endTrim: sub.end - sub.start,
-                              url: '',
-                              name: `Sub: ${sub.text.substring(0, 15)}...`,
-                              textContent: sub.text,
-                              textFontSize: 34,
-                              textColor: '#ffffff',
-                              textFontFamily: 'Montserrat',
-                              textEffect: 'shadow',
-                              volume: 0,
-                              x: 0,
-                              y: dims.h * 0.8, // lower third
-                              width: dims.w,
-                              height: 120,
-                              fitMode: 'contain'
-                            } as any);
-                          });
+                          addGeneratedSubtitles(
+                            subtitlesList.map((sub) => ({
+                              start: sub.start,
+                              end: sub.end,
+                              text: sub.text,
+                            }))
+                          );
                           alert(`¡Se han importado ${subtitlesList.length} segmentos de subtítulos automáticos en la pista V4!`);
                         } else {
                           alert('No se encontraron subtítulos disponibles para este video.');
@@ -1742,8 +1935,8 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
       <div className="p-5 border-t border-white/5 bg-[#050507] shrink-0 space-y-4">
         <div className="space-y-1.5">
           <span className="text-[9px] text-gray-400 uppercase font-bold block">Calidad de Exportación</span>
-          <div className="grid grid-cols-3 gap-2 bg-black/40 p-1.5 rounded-xl border border-white/5">
-            {(['720p', '1080p', '4k'] as const).map((q) => (
+          <div className="grid grid-cols-4 gap-1 bg-black/40 p-1.5 rounded-xl border border-white/5">
+            {(['720p', '1080p', '4k', 'whatsapp'] as const).map((q) => (
               <button
                 key={q}
                 onClick={() => setExportQuality(q)}
@@ -1756,6 +1949,7 @@ export const VideoInspector: React.FC<VideoInspectorProps> = ({
                 {q === '720p' && '720p'}
                 {q === '1080p' && '1080p'}
                 {q === '4k' && '4K'}
+                {q === 'whatsapp' && '📱 WA'}
               </button>
             ))}
           </div>

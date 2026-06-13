@@ -33,6 +33,17 @@ async function findYtDlp() {
   return null;
 }
 
+async function findCommand(name) {
+  const candidates = [name, `/usr/local/bin/${name}`, `/usr/bin/${name}`, `${os.homedir()}/.local/bin/${name}`];
+  for (const cmd of candidates) {
+    try {
+      await execFileAsync(cmd, ['-version']);
+      return cmd;
+    } catch (_) {}
+  }
+  return null;
+}
+
 // Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
 async function detectBestArgs(ytdlp, url) {
   // Common args for all attempts - Optimized for maximum possible quality (4K/8K)
@@ -41,8 +52,7 @@ async function detectBestArgs(ytdlp, url) {
     '--no-playlist',
     '--js-runtimes', 'node',
     '--remote-components', 'ejs:github',
-    '--extractor-args', 'youtube:player-client=ios,web,android,mweb',
-    '--format-sort', 'res:4320,vcodec:vp9.2,quality', // Force up to 8K and prefer VP9.2
+    '--extractor-args', 'youtube:player-client=default,web,android,tv',
   ];
 
   // 1. Check if a local cookies.txt file exists in the project root directory
@@ -96,6 +106,146 @@ function setCors(res) {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 }
 
+function getDownloadType(filename) {
+  if (filename.startsWith('yt_audio_')) return 'audio';
+  if (filename.startsWith('yt_video_')) return 'video';
+  const ext = path.extname(filename).toLowerCase();
+  if (['.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext)) return 'video';
+  if (['.m4a', '.mka', '.mp3', '.opus', '.aac', '.flac', '.wav'].includes(ext)) return 'audio';
+  return 'video';
+}
+
+function getMimeType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === '.mp4') return 'video/mp4';
+  if (ext === '.webm') return 'video/webm';
+  if (ext === '.mkv') return 'video/x-matroska';
+  if (ext === '.mov') return 'video/quicktime';
+  if (ext === '.avi') return 'video/x-msvideo';
+  if (ext === '.m4a') return 'audio/mp4';
+  if (ext === '.mka') return 'audio/x-matroska';
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.opus') return 'audio/opus';
+  if (ext === '.aac') return 'audio/aac';
+  if (ext === '.flac') return 'audio/flac';
+  if (ext === '.wav') return 'audio/wav';
+  return 'application/octet-stream';
+}
+
+function scoreVideoFormat(format) {
+  return [
+    Number(format.height || 0),
+    Number(format.fps || 0),
+    Number(format.tbr || format.vbr || 0),
+    Number(format.filesize || format.filesize_approx || 0),
+  ];
+}
+
+function scoreAudioFormat(format) {
+  return [
+    Number(format.abr || 0),
+    Number(format.tbr || 0),
+    Number(format.filesize || format.filesize_approx || 0),
+  ];
+}
+
+function compareScore(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function pickBestFormats(info, mode = 'video') {
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  const progressive = formats.filter(f => f.vcodec && f.vcodec !== 'none' && f.acodec && f.acodec !== 'none' && f.format_id);
+  const videoOnly = formats.filter(f => f.vcodec && f.vcodec !== 'none' && (!f.acodec || f.acodec === 'none') && f.format_id);
+  const audioOnly = formats.filter(f => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none') && f.format_id);
+
+  const bestProgressive = progressive.sort((a, b) => compareScore(scoreVideoFormat(b), scoreVideoFormat(a)))[0] || null;
+  const bestVideo = videoOnly.sort((a, b) => compareScore(scoreVideoFormat(b), scoreVideoFormat(a)))[0] || null;
+  const bestAudio = audioOnly.sort((a, b) => compareScore(scoreAudioFormat(b), scoreAudioFormat(a)))[0] || null;
+
+  if (mode === 'audio') {
+    return {
+      formatSelection: 'bestaudio/best',
+      mergeFormat: null,
+      selectedVideo: null,
+      selectedAudio: bestAudio,
+      progressive: false,
+    };
+  }
+
+  return {
+    formatSelection: 'bv*+ba/b',
+    mergeFormat: 'mkv',
+    selectedVideo: bestVideo || bestProgressive,
+    selectedAudio: bestAudio,
+    progressive: false,
+  };
+}
+
+function chooseMergeFormat(videoFormat, audioFormat) {
+  return 'mkv';
+}
+
+function resolveAnalysisInput(url) {
+  try {
+    const parsed = new URL(url);
+    if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && parsed.pathname.startsWith('/download/')) {
+      const filename = path.basename(decodeURIComponent(parsed.pathname.replace(/^\/download\//, '')));
+      return path.join(DOWNLOADS_DIR, filename);
+    }
+  } catch (_) {}
+  return url;
+}
+
+function parseSilencedetect(stderr) {
+  const silenceSegments = [];
+  let silenceStart = null;
+
+  for (const rawLine of stderr.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const startMatch = line.match(/silence_start:\s*([0-9.]+)/);
+    if (startMatch) {
+      silenceStart = parseFloat(startMatch[1]);
+      continue;
+    }
+
+    const endMatch = line.match(/silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/);
+    if (endMatch && silenceStart !== null) {
+      silenceSegments.push({
+        start: silenceStart,
+        end: parseFloat(endMatch[1]),
+      });
+      silenceStart = null;
+    }
+  }
+
+  return silenceSegments;
+}
+
+function buildSpeechSegments(duration, silenceSegments) {
+  const speechSegments = [];
+  let cursor = 0;
+
+  for (const silence of silenceSegments) {
+    if (silence.start > cursor + 0.05) {
+      speechSegments.push({ start: cursor, end: silence.start });
+    }
+    cursor = Math.max(cursor, silence.end);
+  }
+
+  if (cursor < duration - 0.05) {
+    speechSegments.push({ start: cursor, end: duration });
+  }
+
+  return speechSegments.filter(segment => segment.end - segment.start > 0.2);
+}
+
 const server = http.createServer(async (req, res) => {
   setCors(res);
 
@@ -117,16 +267,16 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/downloads') {
     try {
       const files = fs.readdirSync(DOWNLOADS_DIR)
-        .filter(filename => filename.endsWith('.mp3') || filename.endsWith('.mp4'))
+        .filter(filename => !filename.startsWith('.'))
+        .filter(filename => /\.(mp4|webm|mkv|mov|avi|m4a|mp3|opus|aac|flac|wav)$/i.test(filename))
         .map(filename => {
           const filePath = path.join(DOWNLOADS_DIR, filename);
-          const stat = fs.statSync(filePath);
-          const isAudio = filename.endsWith('.mp3');
-          return {
-            filename,
-            name: filename.replace(/^yt_[^_]+_/, '').replace(/\.(mp3|mp4)$/, ''),
-            size: stat.size,
-            type: isAudio ? 'audio' : 'video',
+        const stat = fs.statSync(filePath);
+        return {
+          filename,
+          name: filename.replace(/^yt_(?:audio|video)_[^_]+_/, '').replace(/\.[^.]+$/, ''),
+          size: stat.size,
+            type: getDownloadType(filename),
             url: `http://localhost:3001/download/${encodeURIComponent(filename)}`
           };
         });
@@ -166,9 +316,8 @@ const server = http.createServer(async (req, res) => {
         }
 
         const stat = fs.statSync(filePath);
-        const isAudio = safeFilename.endsWith('.mp3');
         res.writeHead(200, {
-          'Content-Type': isAudio ? 'audio/mpeg' : 'video/mp4',
+          'Content-Type': getMimeType(safeFilename),
           'Content-Length': stat.size,
           'Access-Control-Allow-Origin': '*',
           'Cross-Origin-Resource-Policy': 'cross-origin'
@@ -335,6 +484,79 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /analyze-audio - Detect silence/speech sections with ffmpeg so
+  // browser decoding limitations do not block analysis of video containers.
+  if (req.method === 'POST' && req.url === '/analyze-audio') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { url, silenceNoiseDb = -35, silenceDuration = 0.5 } = JSON.parse(body);
+        if (!url) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing url parameter' }));
+          return;
+        }
+
+        const ffmpeg = await findCommand('ffmpeg');
+        const ffprobe = await findCommand('ffprobe');
+        if (!ffmpeg || !ffprobe) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'ffmpeg/ffprobe no encontrado.' }));
+          return;
+        }
+
+        const input = resolveAnalysisInput(url);
+        const durationResult = await execFileAsync(ffprobe, [
+          '-v', 'error',
+          '-show_entries', 'format=duration',
+          '-of', 'default=noprint_wrappers=1:nokey=1',
+          input
+        ], { maxBuffer: 2 * 1024 * 1024 });
+        const duration = Math.max(0, Number.parseFloat(durationResult.stdout.trim()) || 0);
+
+        const analysis = await new Promise((resolve, reject) => {
+          const proc = spawn(ffmpeg, [
+            '-hide_banner',
+            '-nostats',
+            '-i', input,
+            '-af', `silencedetect=noise=${silenceNoiseDb}dB:d=${silenceDuration}`,
+            '-f', 'null',
+            '-'
+          ]);
+
+          let stderr = '';
+          proc.stderr.on('data', d => stderr += d.toString());
+          proc.on('close', code => {
+            if (code === 0 || code === 1) {
+              resolve(stderr);
+            } else {
+              reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+            }
+          });
+        });
+
+        const silenceSegments = parseSilencedetect(String(analysis));
+        const speechSegments = buildSpeechSegments(duration, silenceSegments);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          duration,
+          silenceSegments,
+          speechSegments,
+        }));
+      } catch (err) {
+        console.error('[ffmpeg] Audio analysis error:', err.message);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      }
+    });
+    return;
+  }
+
   // POST /yt-audio - Download YouTube audio with NDJSON streaming progress
   if (req.method === 'POST' && req.url === '/yt-audio') {
     let body = '';
@@ -366,18 +588,22 @@ const server = http.createServer(async (req, res) => {
         };
 
         const bestArgs = await detectBestArgs(ytdlp, url);
+        const { stdout: infoStdout } = await execFileAsync(ytdlp, ['-J', '--no-playlist', ...bestArgs, url], { maxBuffer: 20 * 1024 * 1024 });
+        const info = JSON.parse(infoStdout);
+        const selection = pickBestFormats(info, 'audio');
 
         // Get expected filename
-        let filename = `yt_audio_${Date.now()}.mp3`;
+        let filename = `yt_audio_${Date.now()}.mka`;
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
             ...bestArgs,
-            '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
+            '-f', selection.formatSelection,
+            '--output', 'yt_audio_%(id)s_%(title).100s.%(ext)s',
             '--get-filename',
             url
           ]);
-          filename = stdout.trim().replace(/\.[^.]+$/, '.mp3');
+          filename = stdout.trim();
         } catch (_) {}
 
         console.log(`[yt-dlp] Downloading audio to: ${filename}`);
@@ -386,9 +612,7 @@ const server = http.createServer(async (req, res) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
             ...bestArgs,
-            '--extract-audio',
-            '--audio-format', 'mp3',
-            '--audio-quality', '128K',
+            '-f', selection.formatSelection,
             '--no-post-overwrites',
             '--output', path.join(DOWNLOADS_DIR, filename),
             url
@@ -428,7 +652,7 @@ const server = http.createServer(async (req, res) => {
           success: true,
           file: {
             filename,
-            name: filename.replace(/^yt_[^_]+_/, '').replace(/\.mp3$/, ''),
+            name: filename.replace(/^yt_(?:audio|video)_[^_]+_/, '').replace(/\.[^.]+$/, ''),
             type: 'audio',
             url: `http://localhost:3001/download/${encodeURIComponent(filename)}`
           }
@@ -477,20 +701,22 @@ const server = http.createServer(async (req, res) => {
         };
 
         const bestArgs = await detectBestArgs(ytdlp, url);
-        const formatSelection = 'bestvideo+bestaudio/best';
+        const { stdout: infoStdout } = await execFileAsync(ytdlp, ['-J', '--no-playlist', ...bestArgs, url], { maxBuffer: 20 * 1024 * 1024 });
+        const info = JSON.parse(infoStdout);
+        const selection = pickBestFormats(info, 'video');
 
         // Get expected filename
-        let filename = `yt_video_${Date.now()}.mp4`;
+        let filename = `yt_video_${Date.now()}.mkv`;
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             ...bestArgs,
-            '-f', formatSelection,
-            '--merge-output-format', 'mp4',
-            '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
+            '-f', selection.formatSelection,
+            ...(selection.mergeFormat ? ['--merge-output-format', selection.mergeFormat] : []),
+            '--output', 'yt_video_%(id)s_%(title).100s.%(ext)s',
             '--get-filename',
             url
           ]);
-          filename = stdout.trim().replace(/\.[^.]+$/, '.mp4');
+          filename = stdout.trim();
         } catch (_) {}
 
         console.log(`[yt-dlp] Downloading video to: ${filename}`);
@@ -499,8 +725,9 @@ const server = http.createServer(async (req, res) => {
           const proc = spawn(ytdlp, [
             ...bestArgs,
             '--concurrent-fragments', '10',
-            '-f', formatSelection,
-            '--merge-output-format', 'mp4',
+            '--no-part',
+            '-f', selection.formatSelection,
+            ...(selection.mergeFormat ? ['--merge-output-format', selection.mergeFormat] : []),
             '--no-post-overwrites',
             '--output', path.join(DOWNLOADS_DIR, filename),
             url
@@ -540,7 +767,7 @@ const server = http.createServer(async (req, res) => {
           success: true,
           file: {
             filename,
-            name: filename.replace(/^yt_[^_]+_/, '').replace(/\.mp4$/, ''),
+            name: filename.replace(/^yt_(?:audio|video)_[^_]+_/, '').replace(/\.[^.]+$/, ''),
             type: 'video',
             url: `http://localhost:3001/download/${encodeURIComponent(filename)}`
           }

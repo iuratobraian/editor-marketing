@@ -106,6 +106,36 @@ export const getClipSourceTimeAndSpeed = (clip: VideoClip, playOffset: number): 
   }
 };
 
+const SUPPORTED_VIDEO_EXTENSIONS = new Set([
+  '.mp4',
+  '.mov',
+  '.mkv',
+  '.webm',
+  '.avi',
+  '.m4v',
+  '.mpeg',
+  '.mpg',
+  '.3gp',
+  '.ts',
+  '.m2ts',
+  '.wmv',
+  '.flv',
+  '.ogv',
+]);
+
+function hasSupportedVideoExtension(fileName: string) {
+  const cleanName = fileName.toLowerCase().split('?')[0].split('#')[0];
+  return Array.from(SUPPORTED_VIDEO_EXTENSIONS).some((ext) => cleanName.endsWith(ext));
+}
+
+function isSupportedVideoFile(file: File) {
+  return file.type.startsWith('video/') || hasSupportedVideoExtension(file.name);
+}
+
+function isSupportedImageFile(file: File) {
+  return file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name);
+}
+
 export default function VideoCompositor() {
   const {
     format,
@@ -156,7 +186,7 @@ export default function VideoCompositor() {
     type: 'clip' | 'audio' | 'canvas' | 'timeline';
   } | null>(null);
 
-  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
+  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k' | 'whatsapp'>('1080p');
   const [aspectRatioLock, setAspectRatioLock] = useState<boolean>(false);
 
   // Vision Pro workspace layout configurations
@@ -271,14 +301,32 @@ export default function VideoCompositor() {
     const x = canvas.width / 2;
     const y = canvas.height / 2;
 
-    if (clip.textEffect === 'neon') {
+    type ClipTextEffect = NonNullable<VideoClip['textEffect']>;
+    const effect = (clip.textEffect || 'none') as ClipTextEffect;
+    if (effect === 'neon') {
       ctx.shadowColor = clip.textColor || '#10b981';
-      ctx.shadowBlur = 15;
-    } else if (clip.textEffect === 'shadow') {
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-      ctx.shadowBlur = 4;
-      ctx.shadowOffsetX = 3;
-      ctx.shadowOffsetY = 3;
+      ctx.shadowBlur = 18;
+    } else if (effect === 'shadow') {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 4;
+      ctx.shadowOffsetY = 4;
+    } else if (effect === 'glitch') {
+      ctx.save();
+      ctx.fillStyle = '#ff4d4d';
+      ctx.fillText(text, x - 2, y);
+      ctx.fillStyle = '#4dd7ff';
+      ctx.fillText(text, x + 2, y);
+      ctx.restore();
+    } else if (effect === 'bounce') {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetY = 2;
+    } else if (effect === 'fade-zoom') {
+      ctx.globalAlpha = 0.92;
+    } else if (effect === 'typing') {
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 3;
     }
 
     const lines = text.split('\n');
@@ -291,6 +339,13 @@ export default function VideoCompositor() {
       startY += lineHeight;
     });
 
+    if (effect === 'typing' && text.length > 0) {
+      const lastLineWidth = ctx.measureText(lines[lines.length - 1] || '').width;
+      const cursorX = x + (lastLineWidth / 2) + 6;
+      const cursorY = startY - lineHeight + 6;
+      ctx.fillRect(cursorX, cursorY - fontSize * 0.7, 3, fontSize * 0.95);
+    }
+
     return canvas.toDataURL('image/png');
   };
 
@@ -300,6 +355,37 @@ export default function VideoCompositor() {
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, []);
+
+  // Helper to find snapping points (other clips' start/end or playhead)
+  const getMagneticTime = (time: number, excludeId: string, threshold = 0.15): number => {
+    const snapPoints: number[] = [0, playbackTime]; // Start of timeline and Playhead
+    
+    // Add all clips' start and end points
+    videoClips.forEach(c => {
+      if (c.id === excludeId) return;
+      const dur = getClipPlayDuration(c);
+      if (c.placementMode === 'overlay') {
+        snapPoints.push(c.timelineStart || 0);
+        snapPoints.push((c.timelineStart || 0) + dur);
+      } else {
+        // Sequential clips snapping is more complex but we can add their absolute timeline positions if needed
+        // For now, snapping for overlays is the primary goal
+      }
+    });
+
+    // Add audio tracks' start and end points
+    audioTracks.forEach(t => {
+      snapPoints.push(t.timelineStart);
+      snapPoints.push(t.timelineStart + t.duration);
+    });
+
+    for (const point of snapPoints) {
+      if (Math.abs(time - point) < threshold) {
+        return point;
+      }
+    }
+    return time;
+  };
 
   // Drag timeline overlays to change timelineStart
   const handleOverlayTimelineDrag = (e: React.PointerEvent, clipId: string, initialStart: number) => {
@@ -316,7 +402,11 @@ export default function VideoCompositor() {
       const clip = videoClips.find(c => c.id === clipId);
       if (!clip) return;
       const clipPlayDur = getClipPlayDuration(clip);
-      const newStart = Math.max(0, Math.min(maxDur - clipPlayDur, initialStart + deltaSec));
+      let newStart = Math.max(0, Math.min(maxDur - clipPlayDur, initialStart + deltaSec));
+      
+      // Apply magnetic snapping
+      newStart = getMagneticTime(newStart, clipId);
+      
       updateClip(clipId, { timelineStart: Number(newStart.toFixed(2)) });
     };
     
@@ -367,7 +457,11 @@ export default function VideoCompositor() {
         
         if (clip.placementMode === 'overlay') {
           if (direction === 'left') {
-            const newTimelineStart = Math.max(0, initialTimelineStart + deltaSec);
+            let newTimelineStart = Math.max(0, initialTimelineStart + deltaSec);
+            
+            // Apply magnetic snapping to the start edge
+            newTimelineStart = getMagneticTime(newTimelineStart, id);
+            
             const trimChange = newTimelineStart - initialTimelineStart;
             let newStartTrim = initialStartTrim + trimChange;
             if (newStartTrim < 0) newStartTrim = 0;
@@ -382,9 +476,17 @@ export default function VideoCompositor() {
             if (newEndTrim < clip.startTrim + 0.5) newEndTrim = clip.startTrim + 0.5;
             if (newEndTrim > clip.duration) newEndTrim = clip.duration;
             
+            // Apply magnetic snapping to the end edge
+            const currentClipStart = clip.timelineStart || 0;
+            const absoluteEnd = currentClipStart + (newEndTrim - clip.startTrim);
+            const snappedAbsoluteEnd = getMagneticTime(absoluteEnd, id);
+            const snappedDelta = snappedAbsoluteEnd - absoluteEnd;
+            newEndTrim += snappedDelta;
+            
             updateClip(id, { endTrim: Number(newEndTrim.toFixed(2)) });
           }
         } else {
+          // Sequential clips snapping is handled by their neighbors automatically in the renderer
           if (direction === 'left') {
             let newStartTrim = initialStartTrim + deltaSec;
             if (newStartTrim < 0) newStartTrim = 0;
@@ -707,7 +809,7 @@ export default function VideoCompositor() {
         for await (const entry of dirHandle.values()) {
           if (entry.kind === 'file') {
             const file = await entry.getFile();
-            if (file.type.startsWith('video/') || file.type.startsWith('image/')) {
+            if (isSupportedVideoFile(file) || isSupportedImageFile(file)) {
               files.push({ name: file.name, url: URL.createObjectURL(file) });
             }
           }
@@ -725,7 +827,7 @@ export default function VideoCompositor() {
       input.onchange = (e: any) => {
         const filesList = Array.from(e.target.files || []) as File[];
         const loaded = filesList
-          .filter(file => file.type.startsWith('video/') || file.type.startsWith('image/') || file.name.endsWith('.mp4') || file.name.endsWith('.webm') || file.name.endsWith('.gif'))
+          .filter(file => isSupportedVideoFile(file) || isSupportedImageFile(file))
           .map(file => ({ name: file.name, url: URL.createObjectURL(file) }));
         setCustomTransitions(prev => [...prev, ...loaded]);
       };
@@ -741,8 +843,12 @@ export default function VideoCompositor() {
     const handlePointerMove = (moveEv: PointerEvent) => {
       const deltaX = moveEv.clientX - startX;
       const deltaSeconds = (deltaX / rect.width) * Math.max(timelineDuration, 5);
-      const newStart = Math.max(0, Number((initialStart + deltaSeconds).toFixed(2)));
-      updateAudioTrack(trackId, { timelineStart: newStart });
+      let newStart = Math.max(0, initialStart + deltaSeconds);
+      
+      // Apply magnetic snapping
+      newStart = getMagneticTime(newStart, trackId);
+      
+      updateAudioTrack(trackId, { timelineStart: Number(newStart.toFixed(2)) });
     };
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove);
@@ -1325,8 +1431,8 @@ export default function VideoCompositor() {
     const files = Array.from(e.target.files || []);
     
     files.forEach((file) => {
-      const isVideo = file.type.startsWith('video/');
-      const isImage = file.type.startsWith('image/');
+      const isVideo = isSupportedVideoFile(file);
+      const isImage = isSupportedImageFile(file);
       
       if (isVideo) {
         const tempVid = document.createElement('video');

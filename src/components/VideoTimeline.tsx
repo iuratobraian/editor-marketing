@@ -49,9 +49,13 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
     setSelectedClipId,
     setSelectedAudioId,
     playbackTime,
+    reorderClips,
     deleteClip,
     deleteAudioTrack,
   } = useEditorStore();
+
+  const [draggedBaseClipId, setDraggedBaseClipId] = React.useState<string | null>(null);
+  const [dropTargetBaseClipId, setDropTargetBaseClipId] = React.useState<string | null>(null);
 
   const titleClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type === 'text');
   const mediaOverlayClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type !== 'text' && c.type !== 'effect' && c.type !== 'adjustment');
@@ -62,6 +66,36 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
   const voiceTracks = audioTracks.filter(t => t.name.toLowerCase().includes('voz') || t.name.toLowerCase().includes('grabación') || t.name.toLowerCase().includes('off'));
   const fxTracks = audioTracks.filter(t => t.name.toLowerCase().includes('fx') || t.name.toLowerCase().includes('efecto'));
   const musicTracks = audioTracks.filter(t => !t.name.toLowerCase().includes('voz') && !t.name.toLowerCase().includes('grabación') && !t.name.toLowerCase().includes('off') && !t.name.toLowerCase().includes('fx') && !t.name.toLowerCase().includes('efecto'));
+
+  const handleBaseClipDrop = (targetClipId?: string) => {
+    if (!draggedBaseClipId) return;
+    const baseIds = videoClips.filter(c => c.placementMode !== 'overlay').map(c => c.id);
+    const fromIndex = baseIds.indexOf(draggedBaseClipId);
+    if (fromIndex === -1) return;
+
+    if (!targetClipId) {
+      const lastBaseId = baseIds[baseIds.length - 1];
+      const toIndex = lastBaseId ? videoClips.findIndex(c => c.id === lastBaseId) : -1;
+      if (toIndex >= 0 && toIndex !== videoClips.findIndex(c => c.id === draggedBaseClipId)) {
+        reorderClips(videoClips.findIndex(c => c.id === draggedBaseClipId), toIndex);
+      }
+      setDraggedBaseClipId(null);
+      setDropTargetBaseClipId(null);
+      return;
+    }
+
+    const toIndex = videoClips.findIndex(c => c.id === targetClipId);
+    const fromVideoIndex = videoClips.findIndex(c => c.id === draggedBaseClipId);
+    if (fromVideoIndex === -1 || toIndex === -1 || fromVideoIndex === toIndex) {
+      setDraggedBaseClipId(null);
+      setDropTargetBaseClipId(null);
+      return;
+    }
+
+    reorderClips(fromVideoIndex, toIndex);
+    setDraggedBaseClipId(null);
+    setDropTargetBaseClipId(null);
+  };
 
   return (
     <div style={{ height: `${timelineHeight}px` }} className="bg-[#09090b] flex flex-col shrink-0 relative w-full border-t border-white/5 select-none">
@@ -165,7 +199,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     if (target.getAttribute('data-resize-handle')) return;
                     handleOverlayTimelineDrag(e, clip.id, clip.timelineStart || 0);
                   }}
-                  className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-pointer absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
+                  className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-grab active:cursor-grabbing absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
                     selectedClipId === clip.id 
                       ? 'border-indigo-500 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] ring-1 ring-indigo-500' 
                       : 'border-white/10 bg-indigo-950/20 hover:border-white/30'
@@ -238,7 +272,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                       if (target.getAttribute('data-resize-handle')) return;
                       handleOverlayTimelineDrag(e, clip.id, clip.timelineStart || 0);
                     }}
-                    className={`h-[80%] rounded border flex flex-col justify-center px-2 cursor-pointer absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
+                    className={`h-[80%] rounded border flex flex-col justify-center px-2 cursor-grab active:cursor-grabbing absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
                       selectedClipId === clip.id 
                         ? 'border-[#7B5CFF] bg-[#7B5CFF]/25 shadow-[0_0_10px_rgba(123,92,255,0.3)] ring-1 ring-[#7B5CFF]' 
                         : 'border-white/10 bg-[#1b1230] hover:border-white/30'
@@ -304,7 +338,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     if (target.getAttribute('data-resize-handle')) return;
                     handleOverlayTimelineDrag(e, clip.id, clip.timelineStart || 0);
                   }}
-                  className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-pointer absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
+                    className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-grab active:cursor-grabbing absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
                     selectedClipId === clip.id 
                       ? 'border-pink-500 bg-pink-500/20 shadow-[0_0_10px_rgba(236,72,153,0.3)] ring-1 ring-pink-500' 
                       : 'border-white/10 bg-pink-950/20 hover:border-white/30'
@@ -424,7 +458,14 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
           <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
             <span>V1 Principal</span>
           </div>
-          <div className="flex-1 h-full px-2 flex items-center gap-1 overflow-x-auto custom-scrollbar relative">
+          <div
+            className="flex-1 h-full px-2 flex items-center gap-1 overflow-x-auto custom-scrollbar relative"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleBaseClipDrop();
+            }}
+          >
             {baseClips.map((clip, idx) => {
               const clipDuration = getClipPlayDuration(clip);
               const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
@@ -433,6 +474,27 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                 <React.Fragment key={clip.id}>
                   <div 
                     onClick={() => setSelectedClipId(clip.id)}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedBaseClipId(clip.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', clip.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedBaseClipId(null);
+                      setDropTargetBaseClipId(null);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedBaseClipId && draggedBaseClipId !== clip.id) {
+                        setDropTargetBaseClipId(clip.id);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleBaseClipDrop(clip.id);
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -444,10 +506,12 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                         type: 'clip'
                       });
                     }}
-                    className={`h-[80%] rounded border flex flex-col justify-between p-1 cursor-pointer shrink-0 transition-all relative overflow-hidden ${
+                  className={`h-[80%] rounded border flex flex-col justify-between p-1 cursor-grab active:cursor-grabbing shrink-0 transition-all relative overflow-hidden ${
                       selectedClipId === clip.id 
                         ? 'border-emerald-500 bg-emerald-500/10' 
-                        : 'border-white/10 bg-[#121215] hover:border-white/30'
+                        : dropTargetBaseClipId === clip.id
+                          ? 'border-emerald-400 bg-emerald-500/20 ring-1 ring-emerald-400'
+                          : 'border-white/10 bg-[#121215] hover:border-white/30'
                     }`}
                     style={{ width: `${Math.max(percentWidth, 12)}%` }}
                   >
@@ -524,7 +588,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     if (target.getAttribute('data-resize-handle')) return;
                     handleAudioTimelineDrag(e, track.id, track.timelineStart);
                   }}
-                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-pointer absolute shrink-0 transition-all overflow-hidden ${
+                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-grab active:cursor-grabbing absolute shrink-0 transition-all overflow-hidden ${
                     selectedAudioId === track.id 
                       ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_10px_rgba(59,130,246,0.3)]' 
                       : 'border-white/10 bg-[#070e17] hover:border-white/30'
@@ -597,7 +661,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     if (target.getAttribute('data-resize-handle')) return;
                     handleAudioTimelineDrag(e, track.id, track.timelineStart);
                   }}
-                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-pointer absolute shrink-0 transition-all overflow-hidden ${
+                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-grab active:cursor-grabbing absolute shrink-0 transition-all overflow-hidden ${
                     selectedAudioId === track.id 
                       ? 'border-yellow-500 bg-yellow-500/10 shadow-[0_0_10px_rgba(234,179,8,0.3)]' 
                       : 'border-white/10 bg-[#1c190f] hover:border-white/30'
@@ -670,7 +734,7 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                     if (target.getAttribute('data-resize-handle')) return;
                     handleAudioTimelineDrag(e, track.id, track.timelineStart);
                   }}
-                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-pointer absolute shrink-0 transition-all overflow-hidden ${
+                  className={`h-[80%] rounded border flex items-center px-1.5 cursor-grab active:cursor-grabbing absolute shrink-0 transition-all overflow-hidden ${
                     selectedAudioId === track.id 
                       ? 'border-red-500 bg-red-500/10 shadow-[0_0_10px_rgba(239,68,68,0.3)]' 
                       : 'border-white/10 bg-[#1c1012] hover:border-white/30'
