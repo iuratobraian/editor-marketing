@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>editor-marketing</title>
+    <script>
+      (() => {
+        const script = document.createElement('script');
+        let base = '/';
+        if (window.location.hostname.endsWith('.github.io')) {
+          const pathParts = window.location.pathname.split('/');
+          if (pathParts.length > 1 && pathParts[1]) {
+            base = `/${pathParts[1]}/`;
+          }
+        }
+        script.src = base + 'coi-serviceworker.js';
+        document.head.appendChild(script);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

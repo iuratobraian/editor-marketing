@@ -965,6 +965,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         constantSpeed: 1.0,
         speedCurvePreset: 'none',
         curvePoints: [1.0, 1.0, 1.0, 1.0, 1.0],
+        fitMode: 'contain',
+        objectPositionX: 50,
+        objectPositionY: 50,
+        zoomEffect: 'none',
       };
       set((state) => ({
         videoClips: [...state.videoClips, newClip],

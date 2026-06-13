@@ -12,6 +12,17 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
     proxy: {
+      '/proxy-soundhelix': {
+        target: 'https://www.soundhelix.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/proxy-soundhelix/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            proxyRes.headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+            proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+          });
+        }
+      },
       '/proxy-mixkit': {
         target: 'https://assets.mixkit.co',
         changeOrigin: true,

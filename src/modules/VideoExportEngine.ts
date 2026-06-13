@@ -1,5 +1,4 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
 import type { VideoClip, AudioTrack, CanvasFormat } from '../types';
 
 // Standard video settings for compilation
@@ -55,9 +54,42 @@ const RESOLUTION_MAP: Record<CanvasFormat, { w: number; h: number }> = {
  * Helper to fetch a Blob URL and convert it to a Uint8Array for FFmpeg MEMFS.
  */
 async function fetchFileBytes(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
-  const arrayBuffer = await response.arrayBuffer();
-  return new Uint8Array(arrayBuffer);
+  if (url.startsWith('data:')) {
+    const parts = url.split(',');
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return u8arr;
+  }
+
+  let fetchUrl = url;
+  if (url.startsWith('https://www.soundhelix.com/')) {
+    fetchUrl = url.replace('https://www.soundhelix.com/', '/proxy-soundhelix/');
+  }
+
+  try {
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  } catch (err) {
+    if (url.startsWith('http') && !url.includes(window.location.host)) {
+      try {
+        console.warn(`Fetch failed for ${url}, trying via CORS proxy...`);
+        const corsProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        const response = await fetch(corsProxyUrl);
+        if (!response.ok) throw new Error(`CORS proxy HTTP error! status: ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        return new Uint8Array(arrayBuffer);
+      } catch (proxyErr) {
+        throw new Error(`No se pudo cargar el archivo desde ${url} debido a restricciones de seguridad (CORS).`);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
@@ -93,9 +125,29 @@ export class VideoExportEngine {
       });
     }
 
+    let base = '/';
+    try {
+      base = (import.meta as any).env.BASE_URL || '/';
+    } catch (e) {
+      base = '/';
+    }
+    let normalizedBase = base.endsWith('/') ? base : base + '/';
+    
+    // Automatically detect GitHub Pages subdirectory if base is still '/'
+    if (normalizedBase === '/' && window.location.hostname.endsWith('.github.io')) {
+      const pathParts = window.location.pathname.split('/');
+      if (pathParts.length > 1 && pathParts[1]) {
+        normalizedBase = `/${pathParts[1]}/`;
+      }
+    }
+
+    const baseURL = window.location.origin + normalizedBase;
+    const coreURL = `${baseURL}ffmpeg/ffmpeg-core.js`;
+    const wasmURL = `${baseURL}ffmpeg/ffmpeg-core.wasm`;
+
     await this.ffmpeg.load({
-      coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-      wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm'),
+      coreURL,
+      wasmURL,
     });
 
     this.isLoaded = true;
@@ -150,7 +202,12 @@ export class VideoExportEngine {
       onLog?.(`Preparando clip ${clip.name} (${clip.placementMode || 'sequence'})...`);
       
       const fileBytes = await fetchFileBytes(clip.url);
-      const ext = clip.type === 'image' ? 'png' : 'mp4';
+      const isGif = clip.type === 'image' && (
+        clip.url.toLowerCase().split('?')[0].endsWith('.gif') || 
+        clip.url.toLowerCase().includes('.gif?') || 
+        clip.url.toLowerCase().includes('/gif')
+      );
+      const ext = isGif ? 'gif' : (clip.type === 'image' ? 'png' : 'mp4');
       const inputFilename = `${prefix}_input_${i}.${ext}`;
       await ffmpeg.writeFile(inputFilename, fileBytes);
 
@@ -179,9 +236,34 @@ export class VideoExportEngine {
 
       const isOverlay = clip.placementMode === 'overlay';
 
+      const getFitFilter = () => {
+        const mode = clip.fitMode || 'contain';
+        const posX = clip.objectPositionX !== undefined ? clip.objectPositionX : 50;
+        const posY = clip.objectPositionY !== undefined ? clip.objectPositionY : 50;
+        
+        if (mode === 'contain') {
+          return [
+            `scale=w=${finalW}:h=${finalH}:force_original_aspect_ratio=decrease`,
+            `pad=w=${finalW}:h=${finalH}:x=(ow-iw)/2:y=(oh-ih)/2:color=black`,
+            `setsar=1`
+          ];
+        } else if (mode === 'cover') {
+          return [
+            `scale=w=${finalW}:h=${finalH}:force_original_aspect_ratio=increase`,
+            `crop=w=${finalW}:h=${finalH}:x=(iw-ow)*${(posX / 100).toFixed(3)}:y=(ih-oh)*${(posY / 100).toFixed(3)}`,
+            `setsar=1`
+          ];
+        } else {
+          return [
+            `scale=${finalW}:${finalH}`,
+            `setsar=1`
+          ];
+        }
+      };
+
       // Base visual filters helper
       const getBaseVf = () => {
-        let vfParts = [`scale=${finalW}:${finalH}`, `setsar=1`];
+        let vfParts = [...getFitFilter()];
         vfParts.push(`eq=brightness=${brightnessVal}:contrast=${fContrast}:saturation=${fSaturation}`);
         if (clip.grayscale > 0) vfParts.push(`hue=s=${1.0 - (clip.grayscale / 100)}`);
         if (clip.sepia > 0) {
@@ -194,6 +276,11 @@ export class VideoExportEngine {
         if (clip.hueRotate > 0) vfParts.push(`hue=h=${clip.hueRotate}`);
         if (clip.blur > 0) vfParts.push(`gblur=sigma=${(clip.blur / 20) * 10 + 1}`);
         if (clip.improveImage) vfParts.push('unsharp=5:5:1.0:5:5:0.0', 'eq=contrast=1.08:saturation=1.1');
+        if (clip.zoomEffect === 'zoom-in') {
+          vfParts.push(`zoompan=z='min(zoom+0.0015,1.20)':d=${Math.ceil(playDuration * VIDEO_FPS)}:s=${finalW}x${finalH}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`);
+        } else if (clip.zoomEffect === 'zoom-out') {
+          vfParts.push(`zoompan=z='max(1.20-0.0015*on,1.0)':d=${Math.ceil(playDuration * VIDEO_FPS)}:s=${finalW}x${finalH}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`);
+        }
         vfParts.push('format=yuv420p');
         return vfParts.join(',');
       };
@@ -201,11 +288,14 @@ export class VideoExportEngine {
       if (clip.type === 'image') {
         // Image to video translation: use loop option and generate dummy stereo sound
         const vfString = `${getBaseVf()}[vid];color=c=black:s=${w}x${h}[bg];[bg][vid]overlay=x=${finalX}:y=${finalY}:eof_action=pass`;
+        
+        const inputArgs = isGif 
+          ? ['-ignore_loop', '0', '-i', inputFilename] 
+          : ['-loop', '1', '-framerate', `${VIDEO_FPS}`, '-i', inputFilename];
+
         await ffmpeg.exec([
           '-y',
-          '-loop', '1',
-          '-framerate', `${VIDEO_FPS}`,
-          '-i', inputFilename,
+          ...inputArgs,
           '-f', 'lavfi',
           '-i', `anullsrc=r=${AUDIO_SAMPLE_RATE}:cl=stereo`,
           '-t', `${playDuration.toFixed(3)}`,
@@ -233,7 +323,7 @@ export class VideoExportEngine {
             const segmentFilename = `${prefix}_clip_${i}_seg_${j}.mp4`;
             segmentFiles.push(segmentFilename);
             
-            let segVfParts = [`scale=${finalW}:${finalH}`, `setsar=1`];
+            let segVfParts = [...getFitFilter()];
             segVfParts.push(`eq=brightness=${brightnessVal}:contrast=${fContrast}:saturation=${fSaturation}`);
             if (clip.grayscale > 0) segVfParts.push(`hue=s=${1.0 - (clip.grayscale / 100)}`);
             if (clip.sepia > 0) {
@@ -301,7 +391,7 @@ export class VideoExportEngine {
         } else {
           // Constant speed or default
           const speed = clip.constantSpeed || 1.0;
-          let vfParts = [`scale=${finalW}:${finalH}`, `setsar=1`];
+          let vfParts = [...getFitFilter()];
           vfParts.push(`eq=brightness=${brightnessVal}:contrast=${fContrast}:saturation=${fSaturation}`);
           if (clip.grayscale > 0) vfParts.push(`hue=s=${1.0 - (clip.grayscale / 100)}`);
           if (clip.sepia > 0) {
@@ -314,6 +404,11 @@ export class VideoExportEngine {
           if (clip.hueRotate > 0) vfParts.push(`hue=h=${clip.hueRotate}`);
           if (clip.blur > 0) vfParts.push(`gblur=sigma=${(clip.blur / 20) * 10 + 1}`);
           if (clip.improveImage) vfParts.push('unsharp=5:5:1.0:5:5:0.0', 'eq=contrast=1.08:saturation=1.1');
+          if (clip.zoomEffect === 'zoom-in') {
+            vfParts.push(`zoompan=z='min(zoom+0.0015,1.20)':d=${Math.ceil(playDuration * VIDEO_FPS)}:s=${finalW}x${finalH}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`);
+          } else if (clip.zoomEffect === 'zoom-out') {
+            vfParts.push(`zoompan=z='max(1.20-0.0015*on,1.0)':d=${Math.ceil(playDuration * VIDEO_FPS)}:s=${finalW}x${finalH}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`);
+          }
           
           if (speed !== 1.0) {
             vfParts.push(`setpts=${(1 / speed).toFixed(4)}*PTS`);

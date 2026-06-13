@@ -146,6 +146,10 @@ export interface VideoClip {
   textFontFamily?: string;
   textEffect?: 'none' | 'shadow' | 'neon' | 'glitch' | 'typing' | 'fade-zoom' | 'bounce';
   fitMode?: 'cover' | 'contain' | 'fill';
+  objectPositionX?: number; // 0 to 100
+  objectPositionY?: number; // 0 to 100
+  zoomEffect?: 'none' | 'zoom-in' | 'zoom-out';
+  effectPreset?: string; // id from VIDEO_EFFECTS library
 }
 
 export interface AudioTrack {

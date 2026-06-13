@@ -27,3 +27,8 @@ dist-ssr
 *.zip
 editor-marketing-sprint1.zip
 
+# Media folders
+downloads/
+transiciones/
+videos/
+

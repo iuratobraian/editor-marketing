@@ -264,20 +264,30 @@ export default function App() {
       });
 
       // Empaquetado Binario: Previene cuelgues del navegador con imágenes 4K
-      canvas.toBlob((blob) => {
-        if (!blob) throw new Error("Fallo al generar el archivo binario.");
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Structura-Design-${format.replace(':', 'x')}-${Date.now()}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url); // Liberar memoria RAM
-      }, 'image/png', 1.0);
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          try {
+            if (!blob) {
+              reject(new Error("Fallo al generar el archivo binario."));
+              return;
+            }
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Structura-Design-${format.replace(':', 'x')}-${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url); // Liberar memoria RAM
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        }, 'image/png', 1.0);
+      });
 
     } catch (e: any) {
-      alert(`Error de exportación: ${e.message}`);
+      alert(`Error de exportación: ${e?.message || e || 'Error desconocido'}`);
     } finally {
       setSelectedId(currentSelected);
     }
