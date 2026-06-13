@@ -33,6 +33,41 @@ async function findYtDlp() {
   return null;
 }
 
+// Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
+async function detectBestArgs(ytdlp, url) {
+  const browsers = ['chrome', 'firefox', 'brave', 'chromium', 'opera', 'edge'];
+  
+  for (const browser of browsers) {
+    try {
+      const testArgs = [
+        '--no-playlist',
+        '--js-runtimes', 'node',
+        '--cookies-from-browser', browser,
+        '--extractor-args', 'youtube:player-client=ios,web',
+        '--get-filename',
+        url
+      ];
+      console.log(`[yt-dlp] Probando cookies de navegador: ${browser}...`);
+      await execFileAsync(ytdlp, testArgs);
+      console.log(`[yt-dlp] ¡Éxito! Usando cookies de ${browser}.`);
+      return [
+        '--js-runtimes', 'node',
+        '--cookies-from-browser', browser,
+        '--extractor-args', 'youtube:player-client=ios,web'
+      ];
+    } catch (err) {
+      // Failed, try next
+    }
+  }
+
+  // Fallback to purely client-spoofing and js-runtimes without cookies
+  console.log(`[yt-dlp] No se encontraron cookies de navegador válidas. Usando extractor spoofing sin cookies.`);
+  return [
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player-client=ios,web'
+  ];
+}
+
 // CORS headers for all responses
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -157,12 +192,14 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        const bestArgs = await detectBestArgs(ytdlp, url);
+
         // Get expected filename
         let filename = `yt_audio_${Date.now()}.mp3`;
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
-            '--extractor-args', 'youtube:player-client=ios',
+            ...bestArgs,
             '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
             '--get-filename',
             url
@@ -175,7 +212,7 @@ const server = http.createServer(async (req, res) => {
         await new Promise((resolve, reject) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
-            '--extractor-args', 'youtube:player-client=ios',
+            ...bestArgs,
             '--extract-audio',
             '--audio-format', 'mp3',
             '--audio-quality', '128K',
@@ -234,6 +271,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        const bestArgs = await detectBestArgs(ytdlp, url);
         const formatSelection = 'bestvideo+bestaudio/best';
 
         // Get expected filename
@@ -241,7 +279,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
-            '--extractor-args', 'youtube:player-client=ios',
+            ...bestArgs,
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
             '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
@@ -256,7 +294,7 @@ const server = http.createServer(async (req, res) => {
         await new Promise((resolve, reject) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
-            '--extractor-args', 'youtube:player-client=ios',
+            ...bestArgs,
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
             '--no-post-overwrites',
