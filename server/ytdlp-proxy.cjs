@@ -35,14 +35,14 @@ async function findYtDlp() {
 
 // Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
 async function detectBestArgs(ytdlp, url) {
-  // Common args for all attempts - Optimized for quality and bypassing
+  // Common args for all attempts - Optimized for maximum possible quality (4K/8K)
   const commonArgs = [
     '--no-check-certificate',
     '--no-playlist',
     '--js-runtimes', 'node',
     '--remote-components', 'ejs:github',
     '--extractor-args', 'youtube:player-client=ios,web,android,mweb',
-    '--format-sort', 'res,vcodec:vp9,quality', // Prefer high resolution and VP9 for better quality
+    '--format-sort', 'res:4320,vcodec:vp9.2,quality', // Force up to 8K and prefer VP9.2
   ];
 
   // 1. Check if a local cookies.txt file exists in the project root directory
@@ -139,35 +139,50 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /download/<filename> - Serve dynamic static file
-  if (req.method === 'GET' && req.url.startsWith('/download/')) {
+  // GET or DELETE /download/<filename>
+  if (req.url.startsWith('/download/')) {
     try {
       const filename = decodeURIComponent(req.url.replace(/^\/download\//, ''));
       const safeFilename = path.basename(filename);
       const filePath = path.join(DOWNLOADS_DIR, safeFilename);
 
-      if (!fs.existsSync(filePath)) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'File not found' }));
+      if (req.method === 'DELETE') {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+        }
         return;
       }
 
-      const stat = fs.statSync(filePath);
-      const isAudio = safeFilename.endsWith('.mp3');
-      res.writeHead(200, {
-        'Content-Type': isAudio ? 'audio/mpeg' : 'video/mp4',
-        'Content-Length': stat.size,
-        'Access-Control-Allow-Origin': '*',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
-      });
-      fs.createReadStream(filePath).pipe(res);
+      if (req.method === 'GET') {
+        if (!fs.existsSync(filePath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+          return;
+        }
+
+        const stat = fs.statSync(filePath);
+        const isAudio = safeFilename.endsWith('.mp3');
+        res.writeHead(200, {
+          'Content-Type': isAudio ? 'audio/mpeg' : 'video/mp4',
+          'Content-Length': stat.size,
+          'Access-Control-Allow-Origin': '*',
+          'Cross-Origin-Resource-Policy': 'cross-origin'
+        });
+        fs.createReadStream(filePath).pipe(res);
+        return;
+      }
     } catch (err) {
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       }
+      return;
     }
-    return;
   }
 
   // POST /open-folder - Open downloads folder in file explorer
@@ -468,7 +483,6 @@ const server = http.createServer(async (req, res) => {
         let filename = `yt_video_${Date.now()}.mp4`;
         try {
           const { stdout } = await execFileAsync(ytdlp, [
-            '--no-playlist',
             ...bestArgs,
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
@@ -483,8 +497,8 @@ const server = http.createServer(async (req, res) => {
 
         await new Promise((resolve, reject) => {
           const proc = spawn(ytdlp, [
-            '--no-playlist',
             ...bestArgs,
+            '--concurrent-fragments', '10',
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
             '--no-post-overwrites',
