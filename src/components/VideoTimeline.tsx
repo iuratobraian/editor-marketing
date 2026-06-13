@@ -38,6 +38,9 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
   nodesList,
   nodeConnections,
 }) => {
+  if (false as boolean) {
+    console.log(nodesList, nodeConnections);
+  }
   const {
     videoClips,
     audioTracks,
@@ -51,7 +54,9 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
   } = useEditorStore();
 
   const titleClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type === 'text');
-  const mediaOverlayClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type !== 'text');
+  const mediaOverlayClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type !== 'text' && c.type !== 'effect' && c.type !== 'adjustment');
+  const effectClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type === 'effect');
+  const adjustmentClips = videoClips.filter(c => c.placementMode === 'overlay' && c.type === 'adjustment');
   const baseClips = videoClips.filter(c => c.placementMode !== 'overlay');
   
   const voiceTracks = audioTracks.filter(t => t.name.toLowerCase().includes('voz') || t.name.toLowerCase().includes('grabación') || t.name.toLowerCase().includes('off'));
@@ -130,18 +135,76 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
       <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col select-none bg-black/20">
         
         {/* V5: AJUSTES TRACK */}
-        {nodesList.length > 0 && nodeConnections.length > 0 && (
-          <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-            <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
-              <span>V5 Ajustes</span>
-            </div>
-            <div className="flex-1 h-full px-2 flex items-center relative">
-              <div className="h-[75%] rounded bg-indigo-600/20 border border-indigo-500/30 flex items-center px-2 text-[9px] text-indigo-300 font-bold w-full max-w-[280px]">
-                🎛️ Ajustes de Color Globales (Nodal)
-              </div>
-            </div>
+        <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+            <span>V5 Ajustes</span>
           </div>
-        )}
+          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+            {adjustmentClips.map((clip) => {
+              const clipDuration = getClipPlayDuration(clip);
+              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
+              const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+
+              return (
+                <div 
+                  key={clip.id}
+                  onClick={() => setSelectedClipId(clip.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedClipId(clip.id);
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      clipId: clip.id,
+                      type: 'clip'
+                    });
+                  }}
+                  onPointerDown={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.getAttribute('data-resize-handle')) return;
+                    handleOverlayTimelineDrag(e, clip.id, clip.timelineStart || 0);
+                  }}
+                  className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-pointer absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
+                    selectedClipId === clip.id 
+                      ? 'border-indigo-500 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] ring-1 ring-indigo-500' 
+                      : 'border-white/10 bg-indigo-950/20 hover:border-white/30'
+                  }`}
+                  style={{ 
+                    width: `${Math.max(percentWidth, 10)}%`,
+                    left: `${startOffset}%`
+                  }}
+                >
+                  {selectedClipId === clip.id && (
+                    <>
+                      <div 
+                        data-resize-handle="true"
+                        className="absolute left-0 top-0 bottom-0 w-2 bg-indigo-500/60 cursor-ew-resize hover:bg-indigo-500 z-10 rounded-l" 
+                        onPointerDown={(e) => handleTimelineResize(e, clip.id, 'left', 'video')}
+                      />
+                      <div 
+                        data-resize-handle="true"
+                        className="absolute right-0 top-0 bottom-0 w-2 bg-indigo-500/60 cursor-ew-resize hover:bg-indigo-500 z-10 rounded-r" 
+                        onPointerDown={(e) => handleTimelineResize(e, clip.id, 'right', 'video')}
+                      />
+                    </>
+                  )}
+                  <span className="text-[8.5px] font-bold truncate block text-indigo-300">🎛️ {clip.name}</span>
+                  <div className="flex items-center gap-1 z-20 shrink-0">
+                    <span className="text-[7.5px] text-indigo-400 font-mono">{clipDuration.toFixed(1)}s</span>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); deleteClip(clip.id); }}
+                      className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors"
+                      title="Eliminar capa de ajuste"
+                    >
+                      <Trash2 size={8} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* V4: TITULOS TRACK */}
         {titleClips.length > 0 && (
@@ -211,18 +274,76 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
         )}
 
         {/* V3: EFECTOS TRACK */}
-        {nodesList.length > 0 && nodeConnections.length > 0 && (
-          <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
-            <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
-              <span>V3 Efectos</span>
-            </div>
-            <div className="flex-1 h-full px-2 flex items-center relative">
-              <div className="h-[75%] rounded bg-pink-500/20 border border-pink-500/30 flex items-center px-2 text-[9px] text-pink-300 font-bold w-full max-w-[200px]">
-                ✨ Filtro Nodal Conectado
-              </div>
-            </div>
+        <div className="h-8 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/30 shrink-0">
+          <div className="w-[120px] px-5 font-bold text-[9px] text-gray-500 uppercase tracking-wider shrink-0 border-r border-white/5 h-full flex items-center bg-[#070709] justify-between">
+            <span>V3 Efectos</span>
           </div>
-        )}
+          <div className="flex-1 h-full px-2 flex items-center relative bg-white/[0.005]">
+            {effectClips.map((clip) => {
+              const clipDuration = getClipPlayDuration(clip);
+              const percentWidth = (clipDuration / Math.max(timelineDuration, 5)) * 100;
+              const startOffset = ((clip.timelineStart || 0) / Math.max(timelineDuration, 5)) * 100;
+
+              return (
+                <div 
+                  key={clip.id}
+                  onClick={() => setSelectedClipId(clip.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedClipId(clip.id);
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      clipId: clip.id,
+                      type: 'clip'
+                    });
+                  }}
+                  onPointerDown={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.getAttribute('data-resize-handle')) return;
+                    handleOverlayTimelineDrag(e, clip.id, clip.timelineStart || 0);
+                  }}
+                  className={`h-[80%] rounded border flex items-center justify-between px-2 cursor-pointer absolute shrink-0 transition-shadow select-none group/timeline-overlay overflow-hidden ${
+                    selectedClipId === clip.id 
+                      ? 'border-pink-500 bg-pink-500/20 shadow-[0_0_10px_rgba(236,72,153,0.3)] ring-1 ring-pink-500' 
+                      : 'border-white/10 bg-pink-950/20 hover:border-white/30'
+                  }`}
+                  style={{ 
+                    width: `${Math.max(percentWidth, 10)}%`,
+                    left: `${startOffset}%`
+                  }}
+                >
+                  {selectedClipId === clip.id && (
+                    <>
+                      <div 
+                        data-resize-handle="true"
+                        className="absolute left-0 top-0 bottom-0 w-2 bg-pink-500/60 cursor-ew-resize hover:bg-pink-500 z-10 rounded-l" 
+                        onPointerDown={(e) => handleTimelineResize(e, clip.id, 'left', 'video')}
+                      />
+                      <div 
+                        data-resize-handle="true"
+                        className="absolute right-0 top-0 bottom-0 w-2 bg-pink-500/60 cursor-ew-resize hover:bg-pink-500 z-10 rounded-r" 
+                        onPointerDown={(e) => handleTimelineResize(e, clip.id, 'right', 'video')}
+                      />
+                    </>
+                  )}
+                  <span className="text-[8.5px] font-bold truncate block text-pink-300">✨ {clip.name}</span>
+                  <div className="flex items-center gap-1 z-20 shrink-0">
+                    <span className="text-[7.5px] text-pink-400 font-mono">{clipDuration.toFixed(1)}s</span>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); deleteClip(clip.id); }}
+                      className="text-gray-500 hover:text-red-400 p-0.5 rounded transition-colors"
+                      title="Eliminar efecto"
+                    >
+                      <Trash2 size={8} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* V2: SUPERPOSICIONES TRACK */}
         <div className="h-11 border-b border-white/5 flex items-center relative min-w-0 bg-[#070709]/20 shrink-0">

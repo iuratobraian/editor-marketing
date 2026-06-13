@@ -1402,18 +1402,115 @@ export default function VideoCompositor() {
 
       setExportLogs((prev) => prev + 'Motor local cargado correctamente. Iniciando procesamiento...\n');
       
-      // Pre-render any kinetic text layers to high-quality transparent PNGs
-      const processedClips = videoClips.map((clip) => {
-        if (clip.type === 'text') {
-          const pngUrl = renderTextClipToDataUrl(clip);
+      const seqClips = videoClips.filter(c => c.placementMode !== 'overlay');
+      const adjustments = videoClips.filter(c => c.type === 'adjustment');
+      const effects = videoClips.filter(c => c.type === 'effect');
+      
+      // Compute sequential timeline positions
+      const seqTimeRanges: Record<string, { start: number; end: number }> = {};
+      let elapsed = 0;
+      for (let i = 0; i < seqClips.length; i++) {
+        const clip = seqClips[i];
+        const clipDuration = getClipPlayDuration(clip);
+        const transDur = (i < seqClips.length - 1 && clip.transitionType !== 'none') 
+          ? (clip.transitionDuration / 1000) 
+          : 0;
+        seqTimeRanges[clip.id] = {
+          start: elapsed,
+          end: elapsed + clipDuration
+        };
+        elapsed += clipDuration - transDur;
+      }
+
+      // Pre-render kinetic text layers and merge filters from overlapping adjustments/effects
+      const processedClips = videoClips
+        .filter(c => c.type !== 'adjustment' && c.type !== 'effect')
+        .map((clip) => {
+          let clipStart = 0;
+          let clipEnd = 0;
+          if (clip.placementMode === 'overlay') {
+            clipStart = clip.timelineStart || 0;
+            clipEnd = clipStart + getClipPlayDuration(clip);
+          } else {
+            const range = seqTimeRanges[clip.id];
+            if (range) {
+              clipStart = range.start;
+              clipEnd = range.end;
+            }
+          }
+
+          let mergedBrightness = clip.brightness;
+          let mergedContrast = clip.contrast;
+          let mergedSaturate = clip.saturate;
+          let mergedBlur = clip.blur;
+          let mergedGrayscale = clip.grayscale;
+          let mergedSepia = clip.sepia;
+          let mergedHueRotate = clip.hueRotate;
+          let mergedOpacity = clip.opacity;
+          let improveImage = clip.improveImage;
+          let zoomEffect = clip.zoomEffect;
+          let effectPreset = clip.effectPreset;
+
+          adjustments.forEach((adj) => {
+            const adjStart = adj.timelineStart || 0;
+            const adjEnd = adjStart + getClipPlayDuration(adj);
+            if (clipStart < adjEnd && clipEnd > adjStart) {
+              mergedBrightness = Number((mergedBrightness * (adj.brightness / 100)).toFixed(2));
+              mergedContrast = Number((mergedContrast * (adj.contrast / 100)).toFixed(2));
+              mergedSaturate = Number((mergedSaturate * (adj.saturate / 100)).toFixed(2));
+              mergedBlur = Math.max(mergedBlur, adj.blur);
+              mergedGrayscale = Math.max(mergedGrayscale, adj.grayscale);
+              mergedSepia = Math.max(mergedSepia, adj.sepia);
+              mergedHueRotate = (mergedHueRotate + adj.hueRotate) % 360;
+              mergedOpacity = Number((mergedOpacity * (adj.opacity / 100)).toFixed(2));
+              if (adj.improveImage) improveImage = true;
+            }
+          });
+
+          effects.forEach((eff) => {
+            const effStart = eff.timelineStart || 0;
+            const effEnd = effStart + getClipPlayDuration(eff);
+            if (clipStart < effEnd && clipEnd > effStart) {
+              if (eff.effectPreset) effectPreset = eff.effectPreset;
+              if (eff.zoomEffect && eff.zoomEffect !== 'none') zoomEffect = eff.zoomEffect;
+            }
+          });
+
+          if (clip.type === 'text') {
+            const pngUrl = renderTextClipToDataUrl(clip);
+            return {
+              ...clip,
+              type: 'image' as const,
+              url: pngUrl,
+              brightness: mergedBrightness,
+              contrast: mergedContrast,
+              saturate: mergedSaturate,
+              blur: mergedBlur,
+              grayscale: mergedGrayscale,
+              sepia: mergedSepia,
+              hueRotate: mergedHueRotate,
+              opacity: mergedOpacity,
+              improveImage,
+              zoomEffect,
+              effectPreset
+            };
+          }
+
           return {
             ...clip,
-            type: 'image' as const, // Compile as a transparent overlay image
-            url: pngUrl
+            brightness: mergedBrightness,
+            contrast: mergedContrast,
+            saturate: mergedSaturate,
+            blur: mergedBlur,
+            grayscale: mergedGrayscale,
+            sepia: mergedSepia,
+            hueRotate: mergedHueRotate,
+            opacity: mergedOpacity,
+            improveImage,
+            zoomEffect,
+            effectPreset
           };
-        }
-        return clip;
-      });
+        });
 
       const blob = await exportEngineRef.current.compile(
         processedClips,

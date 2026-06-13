@@ -520,6 +520,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         >
                           {clip.textContent || 'Texto'}
                         </div>
+                      ) : clip.type === 'adjustment' ? (
+                        <div 
+                          className="w-full h-full pointer-events-none"
+                          style={{
+                            backdropFilter: getFilterCSS(clip).replace(/opacity\([^)]+\)/g, ''),
+                            backgroundColor: 'rgba(99, 102, 241, 0.03)',
+                          }}
+                        />
+                      ) : clip.type === 'effect' ? (
+                        <div 
+                          className="w-full h-full pointer-events-none"
+                          style={{
+                            backgroundColor: 'rgba(236, 72, 153, 0.03)',
+                          }}
+                        />
                       ) : (
                         <img 
                           src={getSafeUrl(clip.url)}

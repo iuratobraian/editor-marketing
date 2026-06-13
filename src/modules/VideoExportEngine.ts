@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 import type { VideoClip, AudioTrack, CanvasFormat } from '../types';
 
 // Standard video settings for compilation
@@ -142,8 +143,8 @@ export class VideoExportEngine {
     }
 
     const baseURL = window.location.origin + normalizedBase;
-    const coreURL = `${baseURL}ffmpeg/ffmpeg-core.js`;
-    const wasmURL = `${baseURL}ffmpeg/ffmpeg-core.wasm`;
+    const coreURL = await toBlobURL(`${baseURL}ffmpeg/ffmpeg-core.js`, 'text/javascript');
+    const wasmURL = await toBlobURL(`${baseURL}ffmpeg/ffmpeg-core.wasm`, 'application/wasm');
 
     await this.ffmpeg.load({
       coreURL,

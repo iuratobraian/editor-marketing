@@ -94,7 +94,24 @@ export interface ActiveGuides {
   y: number | null;
 }
 
-export type VideoClipType = 'video' | 'image' | 'text';
+export interface HslChannel {
+  hue: number;        // -100 to 100
+  saturation: number; // -100 to 100
+  lightness: number;  // -100 to 100
+}
+
+export interface ColorWheelPoint {
+  x: number;          // -1 to 1
+  y: number;          // -1 to 1
+  l: number;          // -100 to 100
+}
+
+export interface KeyframePoint {
+  time: number;
+  value: any;
+}
+
+export type VideoClipType = 'video' | 'image' | 'text' | 'effect' | 'adjustment';
 
 export interface VideoClip {
   id: string;
@@ -150,6 +167,66 @@ export interface VideoClip {
   objectPositionY?: number; // 0 to 100
   zoomEffect?: 'none' | 'zoom-in' | 'zoom-out';
   effectPreset?: string; // id from VIDEO_EFFECTS library
+
+  // CapCut Properties
+  rotation?: number; // default 0
+  uniformScale?: boolean; // default true
+  mixBlendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'soft-light' | 'hard-light' | 'color-dodge' | 'color-burn' | 'difference' | 'darken' | 'lighten';
+  
+  stabilizationEnabled?: boolean;
+  stabilizationMode?: 'basic' | 'advanced' | 'ai';
+  stabilizationIntensity?: number;
+  stabilizationSmoothness?: number;
+  stabilizationCrop?: boolean;
+
+  preservePitch?: boolean;
+  slowMoInterpolation?: 'blending' | 'optical' | 'ai';
+
+  animationInType?: string;
+  animationInDuration?: number;
+  animationOutType?: string;
+  animationOutDuration?: number;
+  animationComboType?: string;
+  animationComboDuration?: number;
+
+  autoAdjustEnabled?: boolean;
+  colorMatchEnabled?: boolean;
+  colorCorrectionEnabled?: boolean;
+
+  temperature?: number;
+  tint?: number;
+  exposure?: number;
+  highlights?: number;
+  shadows?: number;
+  whites?: number;
+  blacks?: number;
+  sharpness?: number;
+  clarity?: number;
+  vignette?: number;
+
+  lutName?: string;
+  lutIntensity?: number;
+  skinProtection?: boolean;
+
+  hslSettings?: Record<string, HslChannel>;
+  curvesPoints?: Record<string, [number, number][]>;
+  colorWheels?: {
+    shadows: ColorWheelPoint;
+    midtones: ColorWheelPoint;
+    highlights: ColorWheelPoint;
+    global: ColorWheelPoint;
+  };
+  maskType?: 'none' | 'circle' | 'rectangle' | 'linear' | 'brush';
+  maskSettings?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+    feather: number;
+  };
+  keyframes?: Record<string, KeyframePoint[]>;
+  enabled?: boolean;
 }
 
 export interface AudioTrack {

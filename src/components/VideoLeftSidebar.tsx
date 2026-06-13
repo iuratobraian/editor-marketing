@@ -439,14 +439,14 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                 {getEffectsByCategory(activeEffectCategory).map(effect => {
                   const isActive = selectedClip?.effectPreset === effect.id;
                   return (
-                    <button
+                    <div
                       key={effect.id}
                       onClick={() => {
                         if (!selectedClipId) return;
                         updateClip(selectedClipId, { effectPreset: isActive ? undefined : effect.id });
                       }}
                       title={effect.description}
-                      className={`relative rounded-xl overflow-hidden border transition-all cursor-pointer group flex flex-col items-center justify-center gap-1.5 py-4 ${isActive ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.25)]' : 'border-white/5 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'}`}
+                      className={`relative rounded-xl overflow-hidden border transition-all cursor-pointer group flex flex-col items-center justify-center gap-1 py-3 ${isActive ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.25)]' : 'border-white/5 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'}`}
                     >
                       <span className={`text-2xl transition-transform duration-300 ${effect.cssAnimation ? `group-hover:${effect.cssAnimation}` : ''}`}>
                         {effect.emoji}
@@ -455,7 +455,28 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                         {effect.name}
                       </span>
                       {isActive && <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>}
-                    </button>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addVideoClip({
+                            type: 'effect',
+                            url: '',
+                            name: effect.name,
+                            duration: 3600,
+                            startTrim: 0,
+                            endTrim: 4,
+                            volume: 0,
+                            placementMode: 'overlay',
+                            timelineStart: playbackTime,
+                            effectPreset: effect.id
+                          } as any);
+                        }}
+                        className="mt-1 px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer border border-emerald-500/30 hover:border-emerald-500 hover:shadow-[0_0_8px_rgba(16,185,129,0.4)] z-20"
+                      >
+                        + Pista (V3)
+                      </button>
+                    </div>
                   );
                 })}
               </div>
