@@ -179,10 +179,17 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
     }
   };
 
+  const [downloadProgress, setDownloadProgress] = useState<{
+    percent: number;
+    speed: string;
+    eta: string;
+  } | null>(null);
+
   const handleDownloadYoutube = async () => {
     if (!youtubeUrl.trim()) return;
     setIsDownloadingYoutube(true);
     setYoutubeError('');
+    setDownloadProgress(null);
 
     try {
       const endpoint = youtubeFormat === 'video' ? '/yt-video' : '/yt-audio';
@@ -193,23 +200,70 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
       });
 
       if (!response.ok) {
-        const errorJson = await response.json();
-        throw new Error(errorJson.error || 'Error al descargar desde YouTube.');
+        const errText = await response.text();
+        let errMsg = 'Error al descargar desde YouTube.';
+        try {
+          const errJson = JSON.parse(errText);
+          errMsg = errJson.error || errMsg;
+        } catch (_) {
+          errMsg = errText || errMsg;
+        }
+        throw new Error(errMsg);
       }
 
-      const data = await response.json();
-      if (!data.success || !data.file) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('El stream de respuesta no está disponible.');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fileData = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'progress') {
+              setDownloadProgress({
+                percent: data.percent,
+                speed: data.speed,
+                eta: data.eta
+              });
+            } else if (data.type === 'complete') {
+              if (data.success && data.file) {
+                fileData = data.file;
+              } else {
+                throw new Error(data.error || 'La descarga falló en el servidor.');
+              }
+            }
+          } catch (e: any) {
+            console.error('Error parsing NDJSON chunk:', e);
+          }
+        }
+      }
+
+      if (fileData) {
+        handleImportDownload(fileData);
+        setYoutubeUrl('');
+        fetchDownloads();
+      } else {
         throw new Error('No se recibió la información del archivo descargado.');
       }
-
-      handleImportDownload(data.file);
-      setYoutubeUrl('');
-      fetchDownloads();
     } catch (err: any) {
       console.error(err);
       setYoutubeError(err.message || 'Error de conexión con el proxy local.');
     } finally {
       setIsDownloadingYoutube(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -532,14 +586,30 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                 </svg>
                 <span>Descargas de YouTube</span>
               </span>
-              <button 
-                onClick={fetchDownloads} 
-                disabled={isLoadingDownloads} 
-                title="Actualizar biblioteca" 
-                className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-all cursor-pointer flex items-center justify-center"
-              >
-                <RefreshCw size={12} className={isLoadingDownloads ? "animate-spin text-emerald-400" : ""} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('http://localhost:3001/open-folder', { method: 'POST' });
+                      if (!res.ok) throw new Error('Error al abrir la carpeta.');
+                    } catch (err: any) {
+                      alert(err.message || 'No se pudo abrir la carpeta.');
+                    }
+                  }}
+                  title="Abrir carpeta de descargas"
+                  className="px-2 py-0.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded text-[8px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-white/5 hover:border-white/10"
+                >
+                  📂 Carpeta
+                </button>
+                <button 
+                  onClick={fetchDownloads} 
+                  disabled={isLoadingDownloads} 
+                  title="Actualizar biblioteca" 
+                  className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-all cursor-pointer flex items-center justify-center"
+                >
+                  <RefreshCw size={12} className={isLoadingDownloads ? "animate-spin text-emerald-400" : ""} />
+                </button>
+              </div>
             </div>
 
             {/* Downloader Form */}
@@ -569,7 +639,11 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                 {isDownloadingYoutube ? (
                   <>
                     <RefreshCw size={10} className="animate-spin"/>
-                    <span>Descargando...</span>
+                    <span>
+                      {downloadProgress 
+                        ? `Descargando: ${downloadProgress.percent.toFixed(1)}% (${downloadProgress.speed || ''})` 
+                        : 'Conectando...'}
+                    </span>
                   </>
                 ) : (
                   <span>Descargar e Importar</span>

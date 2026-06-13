@@ -165,21 +165,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // DELETE /download/<filename> - Delete static download
-  if (req.method === 'DELETE' && req.url.startsWith('/download/')) {
+  // POST /open-folder - Open downloads folder in file explorer
+  if (req.method === 'POST' && req.url === '/open-folder') {
     try {
-      const filename = decodeURIComponent(req.url.replace(/^\/download\//, ''));
-      const safeFilename = path.basename(filename);
-      const filePath = path.join(DOWNLOADS_DIR, safeFilename);
-
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
+      const { exec } = require('child_process');
+      let cmd = '';
+      if (process.platform === 'win32') {
+        cmd = `explorer "${DOWNLOADS_DIR}"`;
+      } else if (process.platform === 'darwin') {
+        cmd = `open "${DOWNLOADS_DIR}"`;
       } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'File not found' }));
+        cmd = `xdg-open "${DOWNLOADS_DIR}"`;
       }
+      exec(cmd);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
@@ -187,7 +187,135 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /yt-audio - Download YouTube audio to folder
+  // Helper parser function for VTT subtitles
+  function parseVttTime(timeStr) {
+    const parts = timeStr.trim().split(':');
+    let hrs = 0, mins = 0, secs = 0;
+    if (parts.length === 3) {
+      hrs = parseFloat(parts[0]);
+      mins = parseFloat(parts[1]);
+      secs = parseFloat(parts[2]);
+    } else if (parts.length === 2) {
+      mins = parseFloat(parts[0]);
+      secs = parseFloat(parts[1]);
+    }
+    return hrs * 3600 + mins * 60 + secs;
+  }
+
+  function parseVtt(content) {
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
+    const cues = [];
+    let currentCue = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) {
+        if (currentCue) {
+          cues.push(currentCue);
+          currentCue = null;
+        }
+        continue;
+      }
+
+      if (line.includes('-->')) {
+        const match = line.match(/([\d:.]+)\s+-->\s+([\d:.]+)/);
+        if (match) {
+          currentCue = {
+            start: parseVttTime(match[1]),
+            end: parseVttTime(match[2]),
+            text: ''
+          };
+        }
+      } else if (currentCue) {
+        const cleanText = line.replace(/<[^>]+>/g, '').trim();
+        if (cleanText) {
+          currentCue.text = currentCue.text ? currentCue.text + '\n' + cleanText : cleanText;
+        }
+      }
+    }
+    if (currentCue) cues.push(currentCue);
+    return cues;
+  }
+
+  // POST /yt-subtitles - Fetch and parse subtitles from YouTube
+  if (req.method === 'POST' && req.url === '/yt-subtitles') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { url, lang = 'es' } = JSON.parse(body);
+        if (!url) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing url parameter' }));
+          return;
+        }
+
+        const ytdlp = await findYtDlp();
+        if (!ytdlp) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'yt-dlp no encontrado.' }));
+          return;
+        }
+
+        const bestArgs = await detectBestArgs(ytdlp, url);
+        const tempSubDir = path.join(os.tmpdir(), `yt_subs_${Date.now()}`);
+        fs.mkdirSync(tempSubDir, { recursive: true });
+
+        const outputPattern = path.join(tempSubDir, 'subtitles');
+
+        console.log(`[yt-dlp] Fetching subtitles to temp dir: ${tempSubDir}`);
+        await new Promise((resolve, reject) => {
+          const proc = spawn(ytdlp, [
+            '--no-playlist',
+            ...bestArgs,
+            '--write-auto-subs',
+            '--write-subs',
+            '--skip-download',
+            '--sub-lang', `${lang},en`,
+            '--sub-format', 'vtt',
+            '--output', outputPattern,
+            url
+          ]);
+
+          let stderr = '';
+          proc.stderr.on('data', d => stderr += d);
+          proc.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error(stderr || `yt-dlp exited with code ${code}`));
+          });
+        });
+
+        const files = fs.readdirSync(tempSubDir);
+        const vttFile = files.find(f => f.endsWith('.vtt'));
+
+        if (!vttFile) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, subtitles: [] }));
+          return;
+        }
+
+        const vttPath = path.join(tempSubDir, vttFile);
+        const vttContent = fs.readFileSync(vttPath, 'utf8');
+        const parsed = parseVtt(vttContent);
+
+        try {
+          fs.rmSync(tempSubDir, { recursive: true, force: true });
+        } catch (_) {}
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, subtitles: parsed }));
+      } catch (err) {
+        console.error('[yt-dlp] Subtitles Error:', err.message);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      }
+    });
+    return;
+  }
+
+  // POST /yt-audio - Download YouTube audio with NDJSON streaming progress
   if (req.method === 'POST' && req.url === '/yt-audio') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -206,6 +334,16 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: 'yt-dlp no encontrado.' }));
           return;
         }
+
+        res.writeHead(200, {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+
+        const sendProgress = (data) => {
+          res.write(JSON.stringify(data) + '\n');
+        };
 
         const bestArgs = await detectBestArgs(ytdlp, url);
 
@@ -241,6 +379,18 @@ const server = http.createServer(async (req, res) => {
             for (const line of lines) {
               if (line.includes('[download]') || line.includes('[Merger]')) {
                 console.log(`[yt-dlp] ${line.trim()}`);
+                const percentMatch = line.match(/(\d+(\.\d+)?)%/);
+                if (percentMatch) {
+                  const percent = parseFloat(percentMatch[1]);
+                  const speedMatch = line.match(/at\s+([^\s]+)/);
+                  const etaMatch = line.match(/ETA\s+([^\s]+)/);
+                  sendProgress({
+                    type: 'progress',
+                    percent,
+                    speed: speedMatch ? speedMatch[1] : '',
+                    eta: etaMatch ? etaMatch[1] : ''
+                  });
+                }
               }
             }
           });
@@ -253,8 +403,8 @@ const server = http.createServer(async (req, res) => {
           });
         });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
+        sendProgress({
+          type: 'complete',
           success: true,
           file: {
             filename,
@@ -262,7 +412,8 @@ const server = http.createServer(async (req, res) => {
             type: 'audio',
             url: `http://localhost:3001/download/${encodeURIComponent(filename)}`
           }
-        }));
+        });
+        res.end();
 
       } catch (err) {
         console.error('[yt-dlp] Error:', err.message);
@@ -275,7 +426,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /yt-video - Download YouTube video to folder
+  // POST /yt-video - Download YouTube video with NDJSON streaming progress
   if (req.method === 'POST' && req.url === '/yt-video') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -294,6 +445,16 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: 'yt-dlp no encontrado.' }));
           return;
         }
+
+        res.writeHead(200, {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+
+        const sendProgress = (data) => {
+          res.write(JSON.stringify(data) + '\n');
+        };
 
         const bestArgs = await detectBestArgs(ytdlp, url);
         const formatSelection = 'bestvideo+bestaudio/best';
@@ -331,6 +492,18 @@ const server = http.createServer(async (req, res) => {
             for (const line of lines) {
               if (line.includes('[download]') || line.includes('[Merger]')) {
                 console.log(`[yt-dlp] ${line.trim()}`);
+                const percentMatch = line.match(/(\d+(\.\d+)?)%/);
+                if (percentMatch) {
+                  const percent = parseFloat(percentMatch[1]);
+                  const speedMatch = line.match(/at\s+([^\s]+)/);
+                  const etaMatch = line.match(/ETA\s+([^\s]+)/);
+                  sendProgress({
+                    type: 'progress',
+                    percent,
+                    speed: speedMatch ? speedMatch[1] : '',
+                    eta: etaMatch ? etaMatch[1] : ''
+                  });
+                }
               }
             }
           });
@@ -343,8 +516,8 @@ const server = http.createServer(async (req, res) => {
           });
         });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
+        sendProgress({
+          type: 'complete',
           success: true,
           file: {
             filename,
@@ -352,7 +525,8 @@ const server = http.createServer(async (req, res) => {
             type: 'video',
             url: `http://localhost:3001/download/${encodeURIComponent(filename)}`
           }
-        }));
+        });
+        res.end();
 
       } catch (err) {
         console.error('[yt-dlp] Error:', err.message);
