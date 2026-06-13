@@ -600,9 +600,9 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
                   onClick={async () => {
                     try {
                       const res = await fetch('http://localhost:3001/open-folder', { method: 'POST' });
-                      if (!res.ok) throw new Error('Error al abrir la carpeta.');
+                      if (!res.ok) throw new Error('No se pudo abrir la carpeta.');
                     } catch (err: any) {
-                      alert(err.message || 'No se pudo abrir la carpeta.');
+                      alert('❌ ERROR: El servidor proxy no está corriendo. Ejecuta "npm run dev" en la terminal.');
                     }
                   }}
                   title="Abrir carpeta de descargas"
