@@ -35,13 +35,14 @@ async function findYtDlp() {
 
 // Bypasses bot detection by scanning browser cookies and utilizing Node.js JS runtime
 async function detectBestArgs(ytdlp, url) {
-  // Common args for all attempts
+  // Common args for all attempts - Optimized for quality and bypassing
   const commonArgs = [
     '--no-check-certificate',
     '--no-playlist',
     '--js-runtimes', 'node',
     '--remote-components', 'ejs:github',
-    '--extractor-args', 'youtube:player-client=ios,web,android,mweb'
+    '--extractor-args', 'youtube:player-client=ios,web,android,mweb',
+    '--format-sort', 'res,vcodec:vp9,quality', // Prefer high resolution and VP9 for better quality
   ];
 
   // 1. Check if a local cookies.txt file exists in the project root directory
@@ -80,8 +81,10 @@ async function detectBestArgs(ytdlp, url) {
   console.log(`[yt-dlp] No se encontraron cookies de navegador válidas. Usando extractor spoofing agresivo sin cookies.`);
   return [
     ...commonArgs,
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    '--referer', 'https://www.google.com/'
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    '--referer', 'https://www.google.com/',
+    '--add-header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    '--add-header', 'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
   ];
 }
 
@@ -553,6 +556,8 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log('║   Editor Marketing — yt-dlp Proxy    ║');
   console.log(`║   Puerto: http://localhost:${PORT}       ║`);
   console.log(`║   yt-dlp: ${ytdlp ? `✅ ${ytdlp}` : '❌ NO ENCONTRADO'}`.padEnd(42) + '║');
+  console.log(`║   Calidad: Máxima (4K/1080p VP9)     ║`);
+  console.log(`║   Cookies: Browser / cookies.txt     ║`);
   console.log('╚══════════════════════════════════════╝');
   console.log('');
   console.log('Listo para recibir peticiones del editor...');

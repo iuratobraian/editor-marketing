@@ -95,12 +95,16 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
     setDownloadsError('');
     try {
       const response = await fetch('http://localhost:3001/downloads');
-      if (!response.ok) throw new Error('Error al obtener la lista de descargas.');
+      if (!response.ok) throw new Error('Servidor de descargas no disponible.');
       const data = await response.json();
       setDownloadsList(data);
     } catch (err: any) {
-      console.error(err);
-      setDownloadsError(err.message || 'No se pudo conectar con el servidor de descargas.');
+      const isConnectionError = err.message === 'Failed to fetch' || err.code === 'ECONNREFUSED';
+      setDownloadsError(
+        isConnectionError 
+          ? '❌ ERROR: El servidor proxy no está corriendo. Ejecuta "npm run dev" en la terminal.' 
+          : (err.message || 'No se pudo conectar con el servidor de descargas.')
+      );
     } finally {
       setIsLoadingDownloads(false);
     }
@@ -260,7 +264,12 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
       }
     } catch (err: any) {
       console.error(err);
-      setYoutubeError(err.message || 'Error de conexión con el proxy local.');
+      const isConnectionError = err.message === 'Failed to fetch' || err.code === 'ECONNREFUSED';
+      setYoutubeError(
+        isConnectionError 
+          ? '❌ ERROR DE CONEXIÓN: El servidor proxy no está corriendo. Ejecuta "npm run dev" en la terminal.' 
+          : (err.message || 'Error al descargar el video. Verifica el link o las cookies.')
+      );
     } finally {
       setIsDownloadingYoutube(false);
       setDownloadProgress(null);
@@ -670,9 +679,10 @@ export const VideoLeftSidebar: React.FC<VideoLeftSidebarProps> = ({
               <button 
                 onClick={async () => {
                   try {
-                    await fetch('http://localhost:3001/open-folder', { method: 'POST' });
+                    const response = await fetch('http://localhost:3001/open-folder', { method: 'POST' });
+                    if (!response.ok) throw new Error('No se pudo abrir la carpeta.');
                   } catch (err) {
-                    alert('No se pudo abrir la carpeta. Asegúrate de que el servidor proxy esté corriendo.');
+                    alert('❌ ERROR: El servidor proxy no está corriendo. Ejecuta "npm run dev" en la terminal.');
                   }
                 }}
                 className="text-[8px] bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white px-2 py-0.5 rounded-full border border-white/10 transition-all flex items-center gap-1"
