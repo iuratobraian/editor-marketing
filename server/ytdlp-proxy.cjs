@@ -162,6 +162,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
+            '--extractor-args', 'youtube:player-client=ios',
             '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
             '--get-filename',
             url
@@ -174,6 +175,7 @@ const server = http.createServer(async (req, res) => {
         await new Promise((resolve, reject) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
+            '--extractor-args', 'youtube:player-client=ios',
             '--extract-audio',
             '--audio-format', 'mp3',
             '--audio-quality', '128K',
@@ -239,6 +241,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const { stdout } = await execFileAsync(ytdlp, [
             '--no-playlist',
+            '--extractor-args', 'youtube:player-client=ios',
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
             '--output', 'yt_%(id)s_%(title).100s.%(ext)s',
@@ -253,6 +256,7 @@ const server = http.createServer(async (req, res) => {
         await new Promise((resolve, reject) => {
           const proc = spawn(ytdlp, [
             '--no-playlist',
+            '--extractor-args', 'youtube:player-client=ios',
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
             '--no-post-overwrites',
